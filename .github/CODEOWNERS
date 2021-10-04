@@ -1,0 +1,3 @@
+# Automatically generated CODEOWNERS
+# Regenerate with `make update-codeowners`
+draft-cpbs-pseudorandom-ctls.md bemasc@google.com cpatton@cloudflare.com
