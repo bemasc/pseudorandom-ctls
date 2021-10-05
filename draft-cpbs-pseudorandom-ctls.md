@@ -63,14 +63,14 @@ The goal of this extension is to enable two endpoints to agree on a TLS-based pr
 
 ### Requirements
 
-* Protocol confusion: Neither party has any influence over the bytes emitted by the other party.
-* Privacy: A third party must not be able to determine which of two cTLS templates was in use on a given connection, if both templates use this extension.
+* Protocol confusion attack: Neither party has any influence over the bytes emitted by the other party.
+* Privacy: A third party without access to the template cannot tell whether two connections are using the same pseudorandom cTLS template, or two different pseudorandom cTLS templates.
 * Ossification risk: Every byte sent on the underlying transport is pseudorandom to an observer who does not know the cTLS template.
-* Efficiency: Zero size overhead and minimal CPU cost.
+* Efficiency: Zero size overhead and minimal CPU cost.  Support for servers with many cTLS templates, when appropriately constructed.
 
 ### Non-requirements
 
-* Efficient support for demultiplexing on servers that use many distinct cTLS templates.
+* Efficient support for demultiplexing arbitrary cTLS templates.
 * Addressing information leakage in the length and timing of transmissions.
 
 # The Pseudorandom Extension
@@ -88,7 +88,7 @@ A cTLS template is structured as a JSON object.  This extension is represented b
 
 > TODO: Talk about compatibility.  Pseudorandom isn't backwards-compatible.  Is there even such a thing as a "cTLS extension"?
 
-> QUESTION: Can we come up with a better name than "pseudorandom"?
+> QUESTION: Can we come up with a better name than "pseudorandom" for this entry?
 
 ## Use
 
@@ -100,6 +100,8 @@ Inverse-STPRP(key, tweak, ciphertext) -> message
 ~~~
 
 The Pseudorandom cTLS design assumes that the negotiated AEAD cipher produces purely pseudorandom ciphertext.  This is not strictly a requirement of the AEAD specification, but it is true of all currently registered AEAD algorithms.
+
+> TODO: Confirm that this is really true.
 
 Pseudorandom cTLS applies the STPRP to blocks containing the header and at least as much ciphertext as the AEAD algorithm's authentication strength (i.e. the tag length).  This ensures that the header becomes pseudorandom.
 
@@ -128,8 +130,8 @@ The sender transforms each cTLS record as follows:
     2. Replace `fragment` with `STPRP(key, tweak, fragment)`.
 2. Transform the record as follows:
     1. Let `top` be the first `hdr_length + tag_length` bytes of the record.
-    2. Let `tweak_tag = is_handshake ? profile_id : sequence_number`, using the record's full 64-bit sequence number.
-    3. Set `tweak = "client" + tweak_tag` if sent by the client, or `"server" + tweak_tag` if sent by the server.
+    2. Set `tweak = "client"` if sent by the client, or `"server"` if sent by the server.
+    3. If the record is CTLSCiphertext, append the 64-bit Sequence Number to `tweak`.
     4. Replace `top` with `STPRP(key, tweak, top)`.
 
 > QUESTION: How should we define `sequence_number` here?
