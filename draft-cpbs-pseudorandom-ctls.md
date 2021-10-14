@@ -138,7 +138,7 @@ The sender transforms each cTLS record as follows:
 
 Note: This requires that CTLSPlaintext records always have length at least `hdr_length + tag_length`.  This condition is automatically true in most configurations.
 
-> TODO: How should we actually form the tweaks?  Assuming they need to be fixed-length, can we avoid using a hash?  Should we add some kind of chaining, within a stream or binding ServerHello to ClientHello?
+> TODO: How should we actually form the tweaks?  Do they need to be fixed-length?  Should we add some kind of chaining, within a stream or binding ServerHello to ClientHello?
 
 ### With Datagram Transports
 
@@ -187,7 +187,7 @@ In datagram mode, the `profile_id` and `connection_id` fields allow a server to 
 
 # Privacy Considerations
 
-Pseudorandom cTLS is intended to improve privacy in scenarios where the adversary lacks access to the cTLS template.  However, if the adversary does have access to the cTLS template, Pseudorandom cTLS can reduce privacy, by enabling strong confirmation that a connection is indeed using that template.
+Pseudorandom cTLS is intended to improve privacy in scenarios where the adversary lacks access to the cTLS template.  However, if the adversary does have access to the cTLS template, and the template does not have a `profile_id`, Pseudorandom cTLS can reduce privacy, by enabling strong confirmation that a connection is indeed using that template.
 
 # IANA Considerations {#iana}
 
