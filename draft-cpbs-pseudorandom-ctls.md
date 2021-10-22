@@ -55,7 +55,7 @@ Compact TLS {{!cTLS=I-D.draft-ietf-tls-ctls}} is a compact representation of TLS
 
 Every cTLS template potentially results in a distinct wire image, with important implications for user privacy and ossification risk.
 
-One interesting consequence of protocols with a nontrivial wire image [CP What does non-trivial mean here? What kinds of protocols have a non-trivial wire image? TLS?] is the risk of protocol confusion attacks.  For example, in the NAT Slipstreaming attacks {{SLIPSTREAM}}, a web server causes a browser to send HTTP data that can be confused for another protocol (e.g. SIP) that is processed by a firewall.  Because firewalls are typically focused on attacks arriving from outside the network, malicious payloads sent from a trusted client can trick some firewalls into disabling their own protections.
+One interesting consequence of conventional wire formats (i.e. not pseudorandom) is the risk of protocol confusion attacks.  For example, in the NAT Slipstreaming attacks {{SLIPSTREAM}}, a web server causes a browser to send HTTP data that can be confused for another protocol (e.g. SIP) that is processed by a firewall.  Because firewalls are typically focused on attacks arriving from outside the network, malicious payloads sent from a trusted client can trick some firewalls into disabling their own protections.
 
 ## Goal
 
