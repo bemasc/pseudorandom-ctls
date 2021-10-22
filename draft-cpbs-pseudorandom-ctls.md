@@ -19,7 +19,7 @@ author:
     organization: Google LLC
     email: bemasc@google.com
  -
-    ins: C. J. Patton
+    ins: C. Patton
     name: Christopher Patton
     organization: Cloudflare
     email: cpatton@cloudflare.com
@@ -107,7 +107,7 @@ The STPRP specifies the length (in bytes) of the key.  The tweak is a byte strin
 
 [CP What `STPRP-Encipher` and `STPRP-Decipher`?]
 
-The Pseudorandom cTLS design assumes that the negotiated AEAD algorithm produces pseudorandom ciphertexts.  This is not a requirement of the AEAD specification {{!RFC5116}}, but it is true of popular AEAD families like AES-GCM and ChaChaPoly.
+The Pseudorandom cTLS design assumes that the negotiated AEAD algorithm produces pseudorandom ciphertexts.  This is not a requirement of the AEAD specification {{!RFC5116}}, but it is true of popular AEAD algorithms like AES-GCM and ChaCha20-Poly1305.
 
 
 Pseudorandom cTLS uses the STPRP to encipher all plaintext handshake records, including the record headers.  As long as there is sufficient entropy in the `key_share` extension or `random` field of the ClientHello (resp. ServerHello) the STPRP output will be pseudorandom.
@@ -138,10 +138,10 @@ The sender transforms each cTLS record as follows:
     1. Set `tweak = "client hs" + profile_id` if sent by the client, or `"server hs" + profile_id` if sent by the server.
     2. Replace `fragment` with `STPRP(key, tweak, fragment)`.
 2. Transform the record as follows:
-    1. Let `top` be the first `hdr_length + tag_length` bytes of the record. [CP How about `prefix` instead of `top`?]
+    1. Let `prefix` be the first `hdr_length + tag_length` bytes of the record.
     2. Set `tweak = "client"` if sent by the client, or `"server"` if sent by the server.
     3. If the record is CTLSCiphertext, append the 64-bit Sequence Number to `tweak`.
-    4. Replace `top` with `STPRP(key, tweak, top)`.
+    4. Replace `prefix` with `STPRP(key, tweak, prefix)`.
 
 
 Note: This requires that CTLSPlaintext records always have length at least `hdr_length + tag_length`.  This condition is automatically true in most configurations.
@@ -163,10 +163,10 @@ Given the inputs:
 1. Let `max_hdr_length = max(len(profile_id) + 5, len(connection_id) + 5)`.  This represents the most data that might be needed to read the type and length of either record type.
 2. Let `index = 0`.
 3. While `index != len(payload)`:
-    1. Let `top = payload[index : min(len(payload), index + max_hdr_length + tag_length)]`
+    1. Let `prefix = payload[index : min(len(payload), index + max_hdr_length + tag_length)]`
     2. Let `tweak = "client datagram" + len(payload) + index` if sent by the client, or `"server datagram" + len(payload) + index` if sent by the server.
-    3. Replace `top` with `Inverse-STPRP(key, tweak, top)`. [CP Do you mean STPRP, here and below? Here we're saying what the enciphering party is doing, not the deciphering party.]
-    4. If `top[0] == ctls_handshake`:
+    3. Replace `prefix` with `Inverse-STPRP(key, tweak, prefix)`.
+    4. If `prefix[0] == ctls_handshake`:
         1. Let `tweak` be `"client datagram hs" + profile_id + len(payload) + index` if sent by the client, or `"server datagram hs" + profile_id + len(payload) + index` if sent by the server.
         2. Replace `CTLSPlaintext.fragment` with `Inverse-STPRP(key, tweak, fragment)`.
     5. Set `index` to the end of this record.
