@@ -1,5 +1,4 @@
----
-title: "The Pseudorandom Extension for cTLS"
+--- title: "The Pseudorandom Extension for cTLS"
 abbrev: "Pseudorandom cTLS"
 docname: draft-cpbs-pseudorandom-ctls-latest
 category: exp
@@ -104,7 +103,7 @@ Inverse-STPRP(key, tweak, ciphertext) -> message
 
 The STPRP specifies the length (in bytes) of the key.  The tweak is a byte string of any length.  The STPRP uses the key and tweak to encipher the input message, which also may have any length.  The output ciphertext has the same length as the input message.
 
-[CP What `STPRP-Encipher` and `STPRP-Decipher`?]
+> CP What `STPRP-Encipher` and `STPRP-Decipher`?
 
 The Pseudorandom cTLS design assumes that the negotiated AEAD algorithm produces pseudorandom ciphertexts.  This is not a requirement of the AEAD specification {{!RFC5116}}, but it is true of popular AEAD algorithms like AES-GCM and ChaCha20-Poly1305.
 
