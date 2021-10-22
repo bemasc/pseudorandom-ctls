@@ -19,7 +19,7 @@ author:
     organization: Google LLC
     email: bemasc@google.com
  -
-    ins: C. J. Patton
+    ins: C. Patton
     name: Christopher Patton
     organization: Cloudflare
     email: cpatton@cloudflare.com
@@ -51,11 +51,11 @@ A Strong Tweakable Pseudorandom Permutation (STPRP) is a variable-input-length b
 
 ## Background
 
-Compact TLS {{!cTLS=I-D.draft-ietf-tls-ctls}} is a compact representation of TLS 1.3 (or later), intended for uses where compatibility with previous versions of TLS is not required.  It defines a pre-configuration object called a "template" that contains a profile of the capabilities and behaviors of a TLS server, which is known to both client and server before they initiate a connection.  The template allows both parties to omit information that is irrelevant or redundant, allowing secure connection setup while exchanging less information.
+Compact TLS {{!cTLS=I-D.draft-ietf-tls-ctls}} is a compact representation of TLS 1.3 (or later), intended for uses where compatibility with previous versions of TLS is not required.  It defines a pre-configuration object called a "template" that contains a profile of the capabilities and behaviors of a TLS server, which is known to both client and server before they initiate a connection.  The template allows both parties to omit information that is irrelevant or redundant, allowing a secure connection to be established while exchanging fewer bits on the wire.
 
 Every cTLS template potentially results in a distinct wire image, with important implications for user privacy and ossification risk.
 
-One interesting consequence of protocols with a nontrivial wire image is the risk of protocol confusion attacks.  For example, in the NAT Slipstreaming attacks {{SLIPSTREAM}}, a web server causes a browser to send HTTP data that can be confused for another protocol (e.g. SIP) that is processed by a firewall.  Because firewalls are typically focused on attacks arriving from outside the network, malicious payloads sent from a trusted client can trick some firewalls into disabling their own protections.
+One interesting consequence of conventional wire formats (i.e. not pseudorandom) is the risk of protocol confusion attacks.  For example, in the NAT Slipstreaming attacks {{SLIPSTREAM}}, a web server causes a browser to send HTTP data that can be confused for another protocol (e.g. SIP) that is processed by a firewall.  Because firewalls are typically focused on attacks arriving from outside the network, malicious payloads sent from a trusted client can trick some firewalls into disabling their own protections.
 
 ## Goal
 
@@ -63,7 +63,7 @@ The goal of this extension is to enable two endpoints to agree on a TLS-based pr
 
 ### Requirements
 
-* Protocol confusion attack: Neither party has any influence over the bytes emitted by the other party.
+* Protocol confusion attack resistance: Neither party has any influence over the bytes emitted by the other party.
 * Privacy: A third party without access to the template cannot tell whether two connections are using the same pseudorandom cTLS template, or two different pseudorandom cTLS templates.
 * Ossification risk: Every byte sent on the underlying transport is pseudorandom to an observer who does not know the cTLS template.
 * Efficiency: Zero size overhead and minimal CPU cost.  Support for servers with many cTLS templates, when appropriately constructed.
@@ -77,7 +77,7 @@ The goal of this extension is to enable two endpoints to agree on a TLS-based pr
 
 ## Form
 
-A cTLS template is structured as a JSON object.  This extension is represented by an additional key, "pseudorandom", whose value is an object with two string-valued keys: "stprp" (a name from the STPRP registry (see {{iana}})) and "key" (a base64-encoded shared secret).  For example, a cTLS template might contain an entry like:
+A cTLS template is structured as a JSON object.  This extension is represented by an additional key, "pseudorandom", whose value is an object with two string-valued keys: "stprp" (a name from the STPRP registry (see {{iana}})) and "key" (a base64-encoded shared secret whose length is specified by the STPRP).  For example, a cTLS template might contain an entry like:
 
 ~~~json
 "pseudorandom": {
@@ -88,24 +88,32 @@ A cTLS template is structured as a JSON object.  This extension is represented b
 
 > TODO: Talk about compatibility.  Pseudorandom isn't backwards-compatible.  Is there even such a thing as a "cTLS extension"?
 
-> QUESTION: Can we come up with a better name than "pseudorandom" for this entry?
+
+> TODO: Consider having two keys, one for sending data from client to server and another for sending data from server to client, to align better with the TLS key schedule.  These could be specified explicitly or generated from a single secret by a KDF.
 
 ## Use
 
-Pseudorandom cTLS transforms the cTLS Record Layer into a pseudorandom byte sequence.  Conceptually, it sits between the cTLS Record Layer and the underlying transport (e.g. TCP, UDP).  The transformation is based on an STPRP represented by this syntax:
+The cTLS Record Layer protocol is comprised of AEAD-encrypted ciphertext fragments interleaved with plaintext fragments.  Each record is prefixed by a plaintext header, and some records, like those containing the ClientHello and ServerHello, are not encrypted at all.  The ciphertext fragments are pseudorandom already, so this extension specifies a transformation of the plaintext fragments that ensures that all bits written to the wire are pseudorandom.
+
+Conceptually, the extension sits between the cTLS Record Layer and the underlying transport (e.g. TCP, UDP).  The transformation is based on an STPRP with the following syntax:
 
 ~~~
 STPRP(key, tweak, message) -> ciphertext
 Inverse-STPRP(key, tweak, ciphertext) -> message
 ~~~
 
-The Pseudorandom cTLS design assumes that the negotiated AEAD cipher produces purely pseudorandom ciphertext.  This is not strictly a requirement of the AEAD specification, but it is true of all currently registered AEAD algorithms.
+The STPRP specifies the length (in bytes) of the key.  The tweak is a byte string of any length.  The STPRP uses the key and tweak to encipher the input message, which also may have any length.  The output ciphertext has the same length as the input message.
 
-> TODO: Confirm that this is really true.
+[CP What `STPRP-Encipher` and `STPRP-Decipher`?]
 
-Pseudorandom cTLS applies the STPRP to blocks containing the header and at least as much ciphertext as the AEAD algorithm's authentication strength (i.e. the tag length).  This ensures that the header becomes pseudorandom.
+The Pseudorandom cTLS design assumes that the negotiated AEAD algorithm produces pseudorandom ciphertexts.  This is not a requirement of the AEAD specification {{!RFC5116}}, but it is true of popular AEAD algorithms like AES-GCM and ChaCha20-Poly1305.
 
-When transforming handshake records, Pseudorandom cTLS first applies the STPRP to the entire handshake message.  As long as there is sufficient entropy in the `key_share` or `Random`, the STPRP output will be pseudorandom.
+
+Pseudorandom cTLS uses the STPRP to encipher all plaintext handshake records, including the record headers.  As long as there is sufficient entropy in the `key_share` extension or `random` field of the ClientHello (resp. ServerHello) the STPRP output will be pseudorandom.
+
+> TODO: Check that the assumptions hold for HelloRetryRequest.  As long as no handshake messages are repeated verbatim, it should be fine, but we need to check whether an active attacker can trigger a replay.
+
+Pseudorandom cTLS also enciphers every record header.  In addition to the header, a portion of the AEAD ciphertext itself is enciphered to ensure the input has enough entropy.  As many AEAD ciphertext bytes are borrowed as the AEAD's ciphertext expansion (i.e. its tag length).
 
 ### With Streaming Transports
 
@@ -114,14 +122,14 @@ When used over a streaming transport, Pseudorandom cTLS requires that headers ha
 * If a Connection ID is negotiated, it MUST always be included.
 * If the Sequence Number is not suppressed in the template, it MUST always have 16-bit length.
 
-Normally, Connection IDs and Sequence Numbers are not used with streaming transports, so this is not expected to be a significant limitation.
+Normally, when TLS runs on top of a streaming transport, Connection IDs are not enabled and Sequence Numbers are omitted, so this is not expected to be a significant limitation.
 
 The transformation performed by the sender takes the following inputs:
 
 * `STPRP()` and `key` from `template.pseudorandom`
 * `hdr_length`, the length of the cTLS Unified Header (normally 3)
-* `tag_length`, the minimum size of the AEAD output (normally 16)
-* `template.profile_id` and `template.random`, from the cTLS template
+* `tag_length`, the minimum size of the AEAD ciphertext (normally 16)
+* `template.profile_id` from the cTLS template
 
 The sender transforms each cTLS record as follows:
 
@@ -129,16 +137,15 @@ The sender transforms each cTLS record as follows:
     1. Set `tweak = "client hs" + profile_id` if sent by the client, or `"server hs" + profile_id` if sent by the server.
     2. Replace `fragment` with `STPRP(key, tweak, fragment)`.
 2. Transform the record as follows:
-    1. Let `top` be the first `hdr_length + tag_length` bytes of the record.
+    1. Let `prefix` be the first `hdr_length + tag_length` bytes of the record.
     2. Set `tweak = "client"` if sent by the client, or `"server"` if sent by the server.
     3. If the record is CTLSCiphertext, append the 64-bit Sequence Number to `tweak`.
-    4. Replace `top` with `STPRP(key, tweak, top)`.
+    4. Replace `prefix` with `STPRP(key, tweak, prefix)`.
 
-> QUESTION: How should we define `sequence_number` here?
 
 Note: This requires that CTLSPlaintext records always have length at least `hdr_length + tag_length`.  This condition is automatically true in most configurations.
 
-> TODO: How should we actually form the tweaks?  Do they need to be fixed-length?  Should we add some kind of chaining, within a stream or binding ServerHello to ClientHello?
+> OPEN ISSUE: How should we actually form the tweaks?  Can we assume arbitrary length?  Should we add some kind of chaining, within a stream or binding ServerHello to ClientHello?
 
 ### With Datagram Transports
 
@@ -155,10 +162,10 @@ Given the inputs:
 1. Let `max_hdr_length = max(len(profile_id) + 5, len(connection_id) + 5)`.  This represents the most data that might be needed to read the type and length of either record type.
 2. Let `index = 0`.
 3. While `index != len(payload)`:
-    1. Let `top = payload[index : min(len(payload), index + max_hdr_length + tag_length)]`
+    1. Let `prefix = payload[index : min(len(payload), index + max_hdr_length + tag_length)]`
     2. Let `tweak = "client datagram" + len(payload) + index` if sent by the client, or `"server datagram" + len(payload) + index` if sent by the server.
-    3. Replace `top` with `Inverse-STPRP(key, tweak, top)`.
-    4. If `top[0] == ctls_handshake`:
+    3. Replace `prefix` with `Inverse-STPRP(key, tweak, prefix)`.
+    4. If `prefix[0] == ctls_handshake`:
         1. Let `tweak` be `"client datagram hs" + profile_id + len(payload) + index` if sent by the client, or `"server datagram hs" + profile_id + len(payload) + index` if sent by the server.
         2. Replace `CTLSPlaintext.fragment` with `Inverse-STPRP(key, tweak, fragment)`.
     5. Set `index` to the end of this record.
@@ -175,7 +182,7 @@ Pseudorandom cTLS can interfere with the use of multiple profiles on a single se
 
 Pseudorandom cTLS adds a constant, symmetric computational cost to sending and receiving every record, roughly similar to the cost of encrypting a very small record.  The cryptographic cost of delivering small records will therefore be increased by a constant factor, and the computational cost of delivering large records will be almost unchanged.
 
-> TODO: Key rotation.  How does it work?  We could possibly use trial decryption, with parsing and profile-id matching as an implicit MAC.  There are at least 40 bits of collision-resistance there for a max-length `profile_id`, which is probably fine, but it feels bit soft.
+> TODO: Key rotation.  How does it work?  We could possibly use trial decryption, with parsing and profile-id matching as an implicit MAC.  There are at least 40 bits of collision-resistance there for a max-length `profile_id`, which is probably fine, but it feels bit soft.  Does it help if we put a "key ID" in the tweak?
 
 # Security Considerations
 
@@ -183,7 +190,7 @@ Pseudorandom cTLS operates as a layer between cTLS and its transport, so the sec
 
 In datagram mode, the `profile_id` and `connection_id` fields allow a server to reject almost all packets from a sender who does not know the template (e.g. a DDoS attacker), with minimal CPU cost.  Pseudorandom cTLS requires the server to apply a decryption operation to every incoming datagram before establishing whether it might be valid.  This operation is O(1) and uses only symmetric cryptography, so the impact is expected to be bearable in most deployments.
 
-> TODO: More precise security properties?  Security proof?
+> TODO: More precise security properties and security proof.  The goal we're after hasn't been widely considered in the literature so far.  The basic idea is that the "real" protocol (Pseudorandom cTLS) should be indistinguishable from some "target" protocol that the network is known tolerate.  The assumption is that middleboxes would not attempt to parse packets whose contents are pseudorandom.  (The same idea underlies QUIC's wire encoding foramt {{!RFC9000}}.)   A starting point might be the notion of "Protocol Indistinguishability" (https://link.springer.com/chapter/10.1007/978-3-319-11851-2_11), though it's not clear they capture a Dolev-Yao adversary.
 
 # Privacy Considerations
 
