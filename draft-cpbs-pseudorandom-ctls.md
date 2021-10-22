@@ -88,7 +88,6 @@ A cTLS template is structured as a JSON object.  This extension is represented b
 
 > TODO: Talk about compatibility.  Pseudorandom isn't backwards-compatible.  Is there even such a thing as a "cTLS extension"?
 
-> QUESTION: Can we come up with a better name than "pseudorandom" for this entry? [CP: I like this name because it's evocative of the extension. Alternatively, how about "stprp-key"? or "enciphering-key", if we take the change below?]
 
 > TODO: Consider having two keys, one for sending data from client to server and another for sending data from server to client, to align better with the TLS key schedule.  These could be specified explicitly or generated from a single secret by a KDF.
 
