@@ -21,7 +21,7 @@ author:
  -
     ins: C. Patton
     name: Christopher Patton
-    organization: Cloudflare
+    organization: Cloudflare, Inc.
     email: cpatton@cloudflare.com
 
 normative:
