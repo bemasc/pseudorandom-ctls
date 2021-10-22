@@ -165,14 +165,20 @@ The recipient performs the following steps:
     1. Let `prefix = payload[index : min(len(payload), index + max_hdr_length + tag_length)]`
     2. Let `tweak = "client datagram" + len(payload) + index` if sent by the client, or `"server datagram" + len(payload) + index` if sent by the server.
     3. Replace `prefix` with `STPRP-Decipher(key, tweak, prefix)`.
-    4. If `prefix[0] == ctls_handshake`:
+    4. If `prefix[0] & 0xe0 != 0x20` (i.e. message is not CTLSCipherText):
         1. Let `tweak` be `"client datagram hs" + profile_id + len(payload) + index` if sent by the client, or `"server datagram hs" + profile_id + len(payload) + index` if sent by the server.
         2. Replace `CTLSPlaintext.fragment` with `STPRP-Decipher(key, tweak, fragment)`.
     5. Set `index` to the end of this record.
 
-# Handling failures
+# Plaintext Alerts
 
-> TODO: Describe behavior upon receiving nonsense to avoid alert-based attacks.
+Representing plaintext alerts (i.e. CTLSPlaintext messages with `content_type = alert`) requires additional steps, because Alert fragments have little entropy.
+
+A standard TLS Alert fragment is always 2 bytes long.  In Pseudorandom cTLS, senders MUST append at least `tag_length` random bytes to any plaintext Alert fragment.  Enciphering and deciphering then proceed identically to other CTLSPlaintext messages.  The recipient MUST remove these bytes before passing the CTLSPlaintext to the cTLS implementation.
+
+Servers SHOULD expand any Alert message following the ClientHello to the same size as their usual ServerHello, and SHOULD send additional random TCP segments or datagrams to match the sizes of subsequent components of their ordinary success response.  Otherwise, an adversary could use probing to learn the allowed lengths of ClientHellos and the fraction of ciphertexts that decipher to valid ClientHellos.
+
+> QUESTION: Are there client-issued Alerts in response to malformed ServerHello?
 
 # Operational Considerations
 
