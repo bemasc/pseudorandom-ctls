@@ -63,7 +63,7 @@ The goal of this extension is to enable two endpoints to agree on a TLS-based pr
 
 ### Requirements
 
-* Protocol confusion attack: Neither party has any influence over the bytes emitted by the other party. [CP Is the requirement here supposed to be *resistance* to protocol confusion attacks?]
+* Protocol confusion attack resistance: Neither party has any influence over the bytes emitted by the other party.
 * Privacy: A third party without access to the template cannot tell whether two connections are using the same pseudorandom cTLS template, or two different pseudorandom cTLS templates.
 * Ossification risk: Every byte sent on the underlying transport is pseudorandom to an observer who does not know the cTLS template.
 * Efficiency: Zero size overhead and minimal CPU cost.  Support for servers with many cTLS templates, when appropriately constructed.
@@ -90,7 +90,7 @@ A cTLS template is structured as a JSON object.  This extension is represented b
 
 > QUESTION: Can we come up with a better name than "pseudorandom" for this entry? [CP: I like this name because it's evocative of the extension. Alternatively, how about "stprp-key"? or "enciphering-key", if we take the change below?]
 
-[CP It might be useful to have two keys, one for sending data from client to server and another for sending data from server to client. It may not be strictly necessary for security, but it does align a bit better with the TLS key schedule.]
+> TODO: Consider having two keys, one for sending data from client to server and another for sending data from server to client, to align better with the TLS key schedule.  These could be specified explicitly or generated from a single secret by a KDF.
 
 ## Use
 
@@ -109,13 +109,12 @@ The STPRP specifies the length (in bytes) of the key.  The tweak is a byte strin
 
 The Pseudorandom cTLS design assumes that the negotiated AEAD algorithm produces pseudorandom ciphertexts.  This is not strictly a requirement of the AEAD specification, but it is true of all currently registered AEAD algorithms. [CP Which spec are you referring to here? https://datatracker.ietf.org/doc/html/rfc5116#section-8 seems silent about the specific security property.]
 
-> TODO: Confirm that this is really true. [CP It's definitely true of AES-GCM and ChaChaPoly.]
 
 Pseudorandom cTLS uses the STPRP to encipher all plaintext handshake records, including the record headers.  As long as there is sufficient entropy in the `key_share` extension or `random` field of the ClientHello (resp. ServerHello) the STPRP output will be pseudorandom.
 
-[CP What about HelloRetryRequest? I suppose it would be enciphered the same way, it just won't have entropy.]
+> TODO: Check that the assumptions hold for HelloRetryRequest.  As long as no handshake messages are repeated verbatim, it should be fine, but we need to check whether an active attacker can trigger a replay.
 
-Pseudorandom cTLS also enciphers every record header.  In addition to the header, a portion of the AEAD ciphertext itself is enciphered to ensure the input has enough entropy.  As many AEAD ciphertext bytes are borrowed as the AEAD's ciphertext expansion (i.e. its tag length). [CP The authenticaiton strength isn't what's important. What's important is the ciphertext length.]
+Pseudorandom cTLS also enciphers every record header.  In addition to the header, a portion of the AEAD ciphertext itself is enciphered to ensure the input has enough entropy.  As many AEAD ciphertext bytes are borrowed as the AEAD's ciphertext expansion (i.e. its tag length).
 
 ### With Streaming Transports
 
@@ -124,14 +123,14 @@ When used over a streaming transport, Pseudorandom cTLS requires that headers ha
 * If a Connection ID is negotiated, it MUST always be included.
 * If the Sequence Number is not suppressed in the template, it MUST always have 16-bit length.
 
-Normally, Connection IDs and Sequence Numbers are not used with streaming transports, so this is not expected to be a significant limitation. [CP It's probably useful to be specific about the details. Maybe add a TODO to describe the relevant parts of DTLS and (if applicable) QUIC?]
+Normally, when TLS runs on top of a streaming transport, Connection IDs are not enabled and Sequence Numbers are omitted, so this is not expected to be a significant limitation.
 
 The transformation performed by the sender takes the following inputs:
 
 * `STPRP()` and `key` from `template.pseudorandom`
 * `hdr_length`, the length of the cTLS Unified Header (normally 3)
 * `tag_length`, the minimum size of the AEAD ciphertext (normally 16)
-* `template.profile_id` and `template.random`, from the cTLS template [CP `template.random` isn't currently used.]
+* `template.profile_id` from the cTLS template
 
 The sender transforms each cTLS record as follows:
 
@@ -141,20 +140,13 @@ The sender transforms each cTLS record as follows:
 2. Transform the record as follows:
     1. Let `top` be the first `hdr_length + tag_length` bytes of the record. [CP How about `prefix` instead of `top`?]
     2. Set `tweak = "client"` if sent by the client, or `"server"` if sent by the server.
-    3. If the record is CTLSCiphertext, append the 64-bit Sequence Number to `tweak`. [CP This seems fine, but I'm wondering why we do this. Is there an attack I'm not seeing?]
+    3. If the record is CTLSCiphertext, append the 64-bit Sequence Number to `tweak`.
     4. Replace `top` with `STPRP(key, tweak, top)`.
 
-> QUESTION: How should we define `sequence_number` here? [CP Is `sequence_number` the same as "the 64-bit Sequence Number (of the CTLSCiphertext)?]
 
 Note: This requires that CTLSPlaintext records always have length at least `hdr_length + tag_length`.  This condition is automatically true in most configurations.
 
-> TODO: How should we actually form the tweaks?  Do they need to be fixed-length?  Should we add some kind of chaining, within a stream or binding ServerHello to ClientHello?
-
-[CP
-  * I think the tweaks are good as they are.
-  * I think we need to dig into constructions, but it may end up being useful to assume the tweak is fixed-length. It ought to be straightforward get a fixed-length tweak from a variable-length tweak by, say, hashing it. I suggest we leave the syntax where it is for now and re-evaluate when we've looked closer at constructions.
-  * This is an interesting question! It seems to me like the necessarity of this would fallout from a more detailed security analysis. I suggest leaving this an OPEN ISSUE mentioning this possibility.
-]
+> OPEN ISSUE: How should we actually form the tweaks?  Can we assume arbitrary length?  Should we add some kind of chaining, within a stream or binding ServerHello to ClientHello?
 
 ### With Datagram Transports
 
@@ -168,7 +160,7 @@ Given the inputs:
 * `connection_id`, the ID expected on incoming CTLSCiphertext records
 * `tag_length`, the minimum size of the AEAD output (normally 16)
 
-1. Let `max_hdr_length = max(len(profile_id) + 5, len(connection_id) + 5)`.  This represents the most data that might be needed to read the type and length of either record type. [CP What does the `5` come from?]
+1. Let `max_hdr_length = max(len(profile_id) + 5, len(connection_id) + 5)`.  This represents the most data that might be needed to read the type and length of either record type.
 2. Let `index = 0`.
 3. While `index != len(payload)`:
     1. Let `top = payload[index : min(len(payload), index + max_hdr_length + tag_length)]`
@@ -191,7 +183,7 @@ Pseudorandom cTLS can interfere with the use of multiple profiles on a single se
 
 Pseudorandom cTLS adds a constant, symmetric computational cost to sending and receiving every record, roughly similar to the cost of encrypting a very small record.  The cryptographic cost of delivering small records will therefore be increased by a constant factor, and the computational cost of delivering large records will be almost unchanged.
 
-> TODO: Key rotation.  How does it work?  We could possibly use trial decryption, with parsing and profile-id matching as an implicit MAC.  There are at least 40 bits of collision-resistance there for a max-length `profile_id`, which is probably fine, but it feels bit soft. [CP To make this work, I think we'd want a "key ID" in the tweak.]
+> TODO: Key rotation.  How does it work?  We could possibly use trial decryption, with parsing and profile-id matching as an implicit MAC.  There are at least 40 bits of collision-resistance there for a max-length `profile_id`, which is probably fine, but it feels bit soft.  Does it help if we put a "key ID" in the tweak?
 
 # Security Considerations
 
