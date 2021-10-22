@@ -191,7 +191,7 @@ Pseudorandom cTLS operates as a layer between cTLS and its transport, so the sec
 
 In datagram mode, the `profile_id` and `connection_id` fields allow a server to reject almost all packets from a sender who does not know the template (e.g. a DDoS attacker), with minimal CPU cost.  Pseudorandom cTLS requires the server to apply a decryption operation to every incoming datagram before establishing whether it might be valid.  This operation is O(1) and uses only symmetric cryptography, so the impact is expected to be bearable in most deployments.
 
-> TODO: More precise security properties?  Security proof? [CP I'd be happy to write a few words about this here. As far as I know, the goal we're after hasn't been widely considered in the literature so far. The closest thing I've found is [this](https://link.springer.com/chapter/10.1007/978-3-319-11851-2_11). I haven't had a chance to read it, so I'm not sure if it's approprirate here or not. In any case, I think a formal analysis is going to be appropriate. We should plan to do this sometime in the coming year.]
+> TODO: More precise security properties and security proof.  The goal we're after hasn't been widely considered in the literature so far.  The basic idea is that the "real" protocol (Pseudorandom cTLS) should be indistinguishable from some "target" protocol that the network is known tolerate.  The assumption is that middleboxes would not attempt to parse packets whose contents are pseudorandom.  (The same idea underlies QUIC's wire encoding foramt {{!RFC9000}}.)   A starting point might be the notion of "Protocol Indistinguishability" (https://link.springer.com/chapter/10.1007/978-3-319-11851-2_11), though it's not clear they capture a Dolev-Yao adversary.
 
 # Privacy Considerations
 
