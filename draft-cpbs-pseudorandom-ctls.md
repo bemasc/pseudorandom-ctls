@@ -174,11 +174,11 @@ The recipient performs the following steps:
 
 Representing plaintext alerts (i.e. CTLSPlaintext messages with `content_type = alert`) requires additional steps, because Alert fragments have little entropy.
 
-A standard TLS Alert fragment is always 2 bytes long.  In Pseudorandom cTLS, senders MUST append at least `tag_length` random bytes to any plaintext Alert fragment.  Enciphering and deciphering then proceed identically to other CTLSPlaintext messages.  The recipient MUST remove the padding before passing the CTLSPlaintext to the cTLS implementation.
+A standard TLS Alert fragment is always 2 bytes long.  In Pseudorandom cTLS, senders MUST append at least `tag_length` random bytes to any plaintext Alert fragment.  Enciphering and deciphering then proceed identically to other CTLSPlaintext messages.  The recipient MUST remove these bytes before passing the CTLSPlaintext to the cTLS implementation.
 
-Servers SHOULD pad any Alert message following the ClientHello to the same size as their usual ServerHello, and SHOULD send additional random TCP segments or datagrams to match the sizes of subsequent components of their ordinary success response.  Otherwise, an adversary could use probing to learn the allowed lengths of ClientHellos and the fraction of ciphertexts that decipher to valid ClientHellos.
+Servers SHOULD expand any Alert message following the ClientHello to the same size as their usual ServerHello, and SHOULD send additional random TCP segments or datagrams to match the sizes of subsequent components of their ordinary success response.  Otherwise, an adversary could use probing to learn the allowed lengths of ClientHellos and the fraction of ciphertexts that decipher to valid ClientHellos.
 
-> TODO: Consider client-issued Alerts.
+> QUESTION: Are there client-issued Alerts in response to malformed ServerHello?
 
 # Operational Considerations
 
