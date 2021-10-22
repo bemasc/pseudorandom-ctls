@@ -107,7 +107,7 @@ The STPRP specifies the length (in bytes) of the key.  The tweak is a byte strin
 
 [CP What `STPRP-Encipher` and `STPRP-Decipher`?]
 
-The Pseudorandom cTLS design assumes that the negotiated AEAD algorithm produces pseudorandom ciphertexts.  This is not strictly a requirement of the AEAD specification, but it is true of all currently registered AEAD algorithms. [CP Which spec are you referring to here? https://datatracker.ietf.org/doc/html/rfc5116#section-8 seems silent about the specific security property.]
+The Pseudorandom cTLS design assumes that the negotiated AEAD algorithm produces pseudorandom ciphertexts.  This is not a requirement of the AEAD specification {{!RFC5116}}, but it is true of popular AEAD families like AES-GCM and ChaChaPoly.
 
 
 Pseudorandom cTLS uses the STPRP to encipher all plaintext handshake records, including the record headers.  As long as there is sufficient entropy in the `key_share` extension or `random` field of the ClientHello (resp. ServerHello) the STPRP output will be pseudorandom.
