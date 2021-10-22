@@ -98,13 +98,11 @@ The cTLS Record Layer protocol is comprised of AEAD-encrypted ciphertext fragmen
 Conceptually, the extension sits between the cTLS Record Layer and the underlying transport (e.g. TCP, UDP).  The transformation is based on an STPRP with the following syntax:
 
 ~~~
-STPRP(key, tweak, message) -> ciphertext
-Inverse-STPRP(key, tweak, ciphertext) -> message
+STPRP-Encipher(key, tweak, message) -> ciphertext
+STPRP-Decipher(key, tweak, ciphertext) -> message
 ~~~
 
 The STPRP specifies the length (in bytes) of the key.  The tweak is a byte string of any length.  The STPRP uses the key and tweak to encipher the input message, which also may have any length.  The output ciphertext has the same length as the input message.
-
-[CP What `STPRP-Encipher` and `STPRP-Decipher`?]
 
 The Pseudorandom cTLS design assumes that the negotiated AEAD algorithm produces pseudorandom ciphertexts.  This is not a requirement of the AEAD specification {{!RFC5116}}, but it is true of popular AEAD algorithms like AES-GCM and ChaCha20-Poly1305.
 
@@ -126,7 +124,7 @@ Normally, when TLS runs on top of a streaming transport, Connection IDs are not 
 
 The transformation performed by the sender takes the following inputs:
 
-* `STPRP()` and `key` from `template.pseudorandom`
+* `STPRP-Encipher()` and `key` from `template.pseudorandom`
 * `hdr_length`, the length of the cTLS Unified Header (normally 3)
 * `tag_length`, the minimum size of the AEAD ciphertext (normally 16)
 * `template.profile_id` from the cTLS template
@@ -135,12 +133,12 @@ The sender transforms each cTLS record as follows:
 
 1. If the record is CTLSPlaintext, transform its `fragment` as follows:
     1. Set `tweak = "client hs" + profile_id` if sent by the client, or `"server hs" + profile_id` if sent by the server.
-    2. Replace `fragment` with `STPRP(key, tweak, fragment)`.
+    2. Replace `fragment` with `STPRP-Encipher(key, tweak, fragment)`.
 2. Transform the record as follows:
     1. Let `prefix` be the first `hdr_length + tag_length` bytes of the record.
     2. Set `tweak = "client"` if sent by the client, or `"server"` if sent by the server.
     3. If the record is CTLSCiphertext, append the 64-bit Sequence Number to `tweak`.
-    4. Replace `prefix` with `STPRP(key, tweak, prefix)`.
+    4. Replace `prefix` with `STPRP-Encipher(key, tweak, prefix)`.
 
 
 Note: This requires that CTLSPlaintext records always have length at least `hdr_length + tag_length`.  This condition is automatically true in most configurations.
@@ -149,28 +147,28 @@ Note: This requires that CTLSPlaintext records always have length at least `hdr_
 
 ### With Datagram Transports
 
-Pseudorandom cTLS applies to datagram applications of cTLS without restriction.  In this case, it's easier to specify the inverse transformation applied by the recipient.
+Pseudorandom cTLS applies to datagram applications of cTLS without restriction.  In this case, it's easier to specify the deciphering transformation applied by the recipient.
 
 Given the inputs:
 
 * `payload`, an entire datagram that may contain multiple cTLS records.
-* `STPRP()` and `key` from `template.pseudorandom`
+* `STPRP-Decipher()` and `key` from `template.pseudorandom`
 * `template.profile_id`
 * `connection_id`, the ID expected on incoming CTLSCiphertext records
 * `tag_length`, the minimum size of the AEAD output (normally 16)
+
+The recipient performs the following steps:
 
 1. Let `max_hdr_length = max(len(profile_id) + 5, len(connection_id) + 5)`.  This represents the most data that might be needed to read the type and length of either record type.
 2. Let `index = 0`.
 3. While `index != len(payload)`:
     1. Let `prefix = payload[index : min(len(payload), index + max_hdr_length + tag_length)]`
     2. Let `tweak = "client datagram" + len(payload) + index` if sent by the client, or `"server datagram" + len(payload) + index` if sent by the server.
-    3. Replace `prefix` with `Inverse-STPRP(key, tweak, prefix)`.
+    3. Replace `prefix` with `STPRP-Decipher(key, tweak, prefix)`.
     4. If `prefix[0] == ctls_handshake`:
         1. Let `tweak` be `"client datagram hs" + profile_id + len(payload) + index` if sent by the client, or `"server datagram hs" + profile_id + len(payload) + index` if sent by the server.
-        2. Replace `CTLSPlaintext.fragment` with `Inverse-STPRP(key, tweak, fragment)`.
+        2. Replace `CTLSPlaintext.fragment` with `STPRP-Decipher(key, tweak, fragment)`.
     5. Set `index` to the end of this record.
-
-> TODO: Simplify if cTLS removes varints.
 
 # Handling failures
 
