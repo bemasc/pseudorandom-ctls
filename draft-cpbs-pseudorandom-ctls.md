@@ -88,7 +88,6 @@ A cTLS template is structured as a JSON object.  This extension is represented b
 
 > TODO: Talk about compatibility.  Pseudorandom isn't backwards-compatible.  Is there even such a thing as a "cTLS extension"?
 
-
 > TODO: Consider having two keys, one for sending data from client to server and another for sending data from server to client, to align better with the TLS key schedule.  These could be specified explicitly or generated from a single secret by a KDF.
 
 ## Use
@@ -111,7 +110,7 @@ Pseudorandom cTLS uses the STPRP to encipher all plaintext handshake records, in
 
 > TODO: Check that the assumptions hold for HelloRetryRequest.  As long as no handshake messages are repeated verbatim, it should be fine, but we need to check whether an active attacker can trigger a replay.
 
-Pseudorandom cTLS also enciphers every record header.  In addition to the header, a portion of the AEAD ciphertext itself is enciphered to ensure the input has enough entropy.  As many AEAD ciphertext bytes are borrowed as the AEAD's ciphertext expansion (i.e. its tag length).
+Pseudorandom cTLS also enciphers every record header.  In addition to the header, 16 bytes of the AEAD ciphertext itself is enciphered to ensure the input has enough entropy.  All currently registered AEAD algorithms produce at least this much ciphertext from any input.  Any AEAD algorithm that can produce smaller ciphertexts is not compatible with this specification.
 
 ### With Streaming Transports
 
@@ -126,7 +125,6 @@ The transformation performed by the sender takes the following inputs:
 
 * `STPRP-Encipher()` and `key` from `template.pseudorandom`
 * `hdr_length`, the length of the cTLS Unified Header (normally 3)
-* `tag_length`, the minimum size of the AEAD ciphertext (normally 16)
 * `template.profile_id` from the cTLS template
 
 The sender transforms each cTLS record as follows:
@@ -135,13 +133,13 @@ The sender transforms each cTLS record as follows:
     1. Set `tweak = "client hs" + profile_id` if sent by the client, or `"server hs" + profile_id` if sent by the server.
     2. Replace `fragment` with `STPRP-Encipher(key, tweak, fragment)`.
 2. Transform the record as follows:
-    1. Let `prefix` be the first `hdr_length + tag_length` bytes of the record.
+    1. Let `prefix` be the first `hdr_length + 16` bytes of the record.
     2. Set `tweak = "client"` if sent by the client, or `"server"` if sent by the server.
     3. If the record is CTLSCiphertext, append the 64-bit Sequence Number to `tweak`.
     4. Replace `prefix` with `STPRP-Encipher(key, tweak, prefix)`.
 
 
-Note: This requires that CTLSPlaintext records always have length at least `hdr_length + tag_length`.  This condition is automatically true in most configurations.
+Note: This requires that CTLSPlaintext records always have length at least `hdr_length + 16`.  This condition is automatically true in most configurations.
 
 > OPEN ISSUE: How should we actually form the tweaks?  Can we assume arbitrary length?  Should we add some kind of chaining, within a stream or binding ServerHello to ClientHello?
 
@@ -155,14 +153,13 @@ Given the inputs:
 * `STPRP-Decipher()` and `key` from `template.pseudorandom`
 * `template.profile_id`
 * `connection_id`, the ID expected on incoming CTLSCiphertext records
-* `tag_length`, the minimum size of the AEAD output (normally 16)
 
 The recipient performs the following steps:
 
 1. Let `max_hdr_length = max(len(profile_id) + 5, len(connection_id) + 5)`.  This represents the most data that might be needed to read the type and length of either record type.
 2. Let `index = 0`.
 3. While `index != len(payload)`:
-    1. Let `prefix = payload[index : min(len(payload), index + max_hdr_length + tag_length)]`
+    1. Let `prefix = payload[index : min(len(payload), index + max_hdr_length + 16)]`
     2. Let `tweak = "client datagram" + len(payload) + index` if sent by the client, or `"server datagram" + len(payload) + index` if sent by the server.
     3. Replace `prefix` with `STPRP-Decipher(key, tweak, prefix)`.
     4. If `prefix[0] & 0xe0 != 0x20` (i.e. message is not CTLSCipherText):
@@ -174,7 +171,7 @@ The recipient performs the following steps:
 
 Representing plaintext alerts (i.e. CTLSPlaintext messages with `content_type = alert`) requires additional steps, because Alert fragments have little entropy.
 
-A standard TLS Alert fragment is always 2 bytes long.  In Pseudorandom cTLS, senders MUST append at least `tag_length` random bytes to any plaintext Alert fragment.  Enciphering and deciphering then proceed identically to other CTLSPlaintext messages.  The recipient MUST remove these bytes before passing the CTLSPlaintext to the cTLS implementation.
+A standard TLS Alert fragment is always 2 bytes long.  In Pseudorandom cTLS, senders MUST append at least 16 random bytes to any plaintext Alert fragment.  Enciphering and deciphering then proceed identically to other CTLSPlaintext messages.  The recipient MUST remove these bytes before passing the CTLSPlaintext to the cTLS implementation.
 
 Servers SHOULD expand any Alert message following the ClientHello to the same size as their usual ServerHello, and SHOULD send additional random TCP segments or datagrams to match the sizes of subsequent components of their ordinary success response.  Otherwise, an adversary could use probing to learn the allowed lengths of ClientHellos and the fraction of ciphertexts that decipher to valid ClientHellos.
 
