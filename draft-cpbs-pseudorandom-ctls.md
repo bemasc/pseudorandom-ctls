@@ -126,21 +126,22 @@ The transformation performed by the sender takes the following inputs:
 * `STPRP-Encipher()` and `key` from `template.pseudorandom`
 * `template.profile_id` from the cTLS template
 
-The sender transforms each cTLS record as follows:
+The sender first constructs any CTLSPlaintext records as follows:
 
-1. If the record is CTLSPlaintext, transform its `fragment` as follows:
-    1. Set `tweak = "client hs" + profile_id` if sent by the client, or `"server hs" + profile_id` if sent by the server.
-    2. Replace `fragment` with `STPRP-Encipher(key, tweak, fragment)`.
-2. Transform the record as follows:
-    1. Let `hdr_length` be the length of the record header (normally 3 for CTLSCiphertext or 4 for CTLSPlaintext).
-    2. Let `prefix` be the first `hdr_length + 16` bytes of the record.
-    3. Set `tweak = "client"` if sent by the client, or `"server"` if sent by the server.
-    4. If the record is CTLSCiphertext, append the 64-bit Sequence Number to `tweak`.
-    5. Replace `prefix` with `STPRP-Encipher(key, tweak, prefix)`.
+1. Set `tweak = "client hs" + profile_id` if sent by the client, or `"server hs" + profile_id` if sent by the server.
+2. Replace the message with `STPRP-Encipher(key, tweak, message)`.
+3. Fragment the message if necessary, ensuring at least 16 bytes of message in each fragment.
+4. Change the `content_type` of the final fragment to `ctls_handshake_end(TBD)`.
 
-Note: This procedure assumes that handshake records are at least 16 bytes long.  This condition is automatically true in most configurations.
+Note: This procedure assumes that handshake messages are at least 16 bytes long.  This condition is automatically true in most configurations.
 
-> QUESTION: Is `fragment` actually meant to fragment records across multiple CTLSPlaintext structures?  If so, we need to specify that `STPRP-Encipher` is applied to the entire record, not the fragment, and deciphering could be very tricky.
+The sender then constructs cTLS records as usual, but applies the following transformation before sending each record:
+
+1. Let `hdr_length` be the length of the record header (normally 3 for CTLSCiphertext or 4 for CTLSPlaintext).
+2. Let `prefix` be the first `hdr_length + 16` bytes of the record.
+3. Set `tweak = "client"` if sent by the client, or `"server"` if sent by the server.
+4. If the record is CTLSCiphertext, append the 64-bit Sequence Number to `tweak`.
+5. Replace `prefix` with `STPRP-Encipher(key, tweak, prefix)`.
 
 > OPEN ISSUE: How should we actually form the tweaks?  Can we assume arbitrary length?  Should we add some kind of chaining, within a stream or binding ServerHello to ClientHello?
 
@@ -157,21 +158,23 @@ Given the inputs:
 
 The recipient deciphers the datagram as follows:
 
-1. Let `max_hdr_length = len(connection_id) + 5`.  This represents the most data that might be needed to read the type and length of either record type.
+1. Let `max_hdr_length = max(16, len(connection_id) + 5)`.  This represents the most data that might be needed to read the DTLS Handshake header ({{Section 4.3 of !DTLS13=I-D.draft-ietf-tls-dtls13-43}}) or the CTLSCiphertext header.
 2. Let `index = 0`.
 3. While `index != len(payload)`:
     1. Let `prefix = payload[index : min(len(payload), index + max_hdr_length + 16)]`
     2. Let `tweak = "client datagram" + len(payload) + index` if sent by the client, or `"server datagram" + len(payload) + index` if sent by the server.
     3. Replace `prefix` with `STPRP-Decipher(key, tweak, prefix)`.
-    4. If `prefix[0] & 0xe0 != 0x20` (i.e. message is not CTLSCiphertext):
-        1. Parse the header as CTLSPlaintext to read the `profile_id`.
-        2. Let `tweak` be `"client datagram hs" + profile_id + len(payload) + index` if sent by the client, or `"server datagram hs" + profile_id + len(payload) + index` if sent by the server.
-        3. Replace `CTLSPlaintext.fragment` with `STPRP-Decipher(key, tweak, fragment)`.
     5. Set `index` to the end of this record.
+
+CTLSPlaintext records are subject to an additional decipherment step:
+
+1. Perform fragment reassembly to recover the complete `Handshake.body` ({{Section 5.5 of !DTLS13}}).
+2. Let `tweak` be `"client datagram hs" + profile_id + Handshake.msg_type` if sent by the client, or `"server datagram hs" + profile_id + Handshake.msg_type` if sent by the server.
+3. Replace `Handshake.body` with `STPRP-Decipher(key, tweak, Handshake.body)`.
 
 # Plaintext Alerts
 
-Representing plaintext alerts (i.e. CTLSPlaintext messages with `content_type = alert`) requires additional steps, because Alert fragments have little entropy.
+Representing plaintext alerts (i.e. CTLSPlaintext messages with `content_type = alert(TBD)`) requires additional steps, because Alert fragments have little entropy.
 
 A standard TLS Alert fragment is always 2 bytes long.  In Pseudorandom cTLS, senders MUST append at least 16 random bytes to any plaintext Alert fragment.  Enciphering and deciphering then proceed identically to other CTLSPlaintext messages.  The recipient MUST remove these bytes before passing the CTLSPlaintext to the cTLS implementation.
 
@@ -193,7 +196,7 @@ Pseudorandom cTLS operates as a layer between cTLS and its transport, so the sec
 
 In datagram mode, the `profile_id` and `connection_id` fields allow a server to reject almost all packets from a sender who does not know the template (e.g. a DDoS attacker), with minimal CPU cost.  Pseudorandom cTLS requires the server to apply a decryption operation to every incoming datagram before establishing whether it might be valid.  This operation is O(1) and uses only symmetric cryptography, so the impact is expected to be bearable in most deployments.
 
-> TODO: More precise security properties and security proof.  The goal we're after hasn't been widely considered in the literature so far, at least as far as we can tell.  The basic idea is that the "real" protocol (Pseudorandom cTLS) should be indistinguishable from some "target" protocol that the network is known tolerate.  The assumption is that middleboxes would not attempt to parse packets whose contents are pseudorandom.  (The same idea underlies QUIC's wire encoding foramt {{!RFC9000}}.)   A starting point might be the formal notion of "Observational Equivalence" (https://infsec.ethz.ch/content/dam/ethz/special-interest/infk/inst-infsec/information-security-group-dam/research/publications/pub2015/ASPObsEq.pdf).
+> TODO: More precise security properties and security proof.  The goal we're after hasn't been widely considered in the literature so far, at least as far as we can tell.  The basic idea is that the "real" protocol (Pseudorandom cTLS) should be indistinguishable from some "target" protocol that the network is known tolerate.  The assumption is that middleboxes would not attempt to parse packets whose contents are pseudorandom.  (The same idea underlies QUIC's wire encoding format {{!RFC9000}}.)   A starting point might be the formal notion of "Observational Equivalence" (https://infsec.ethz.ch/content/dam/ethz/special-interest/infk/inst-infsec/information-security-group-dam/research/publications/pub2015/ASPObsEq.pdf).
 
 # Privacy Considerations
 
