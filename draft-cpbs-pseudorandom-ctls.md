@@ -51,7 +51,7 @@ A Strong Tweakable Pseudorandom Permutation (STPRP) is a variable-input-length b
 
 ## Background
 
-Compact TLS {{!cTLS=I-D.draft-ietf-tls-ctls}} is a compact representation of TLS 1.3 (or later), intended for uses where compatibility with previous versions of TLS is not required.  It defines a pre-configuration object called a "template" that contains a profile of the capabilities and behaviors of a TLS server, which is known to both client and server before they initiate a connection.  The template allows both parties to omit information that is irrelevant or redundant, allowing a secure connection to be established while exchanging fewer bits on the wire.
+Compact TLS {{!cTLS=I-D.draft-ietf-tls-ctls-04}} is a compact representation of TLS 1.3 (or later), intended for uses where compatibility with previous versions of TLS is not required.  It defines a pre-configuration object called a "template" that contains a profile of the capabilities and behaviors of a TLS server, which is known to both client and server before they initiate a connection.  The template allows both parties to omit information that is irrelevant or redundant, allowing a secure connection to be established while exchanging fewer bits on the wire.
 
 Every cTLS template potentially results in a distinct wire image, with important implications for user privacy and ossification risk.
 
@@ -114,7 +114,7 @@ Pseudorandom cTLS also enciphers every record header.  In addition to the header
 
 ### With Streaming Transports
 
-When used over a streaming transport, Pseudorandom cTLS requires that headers have a fixed length.  This creates the following limitations:
+When used over a streaming transport, Pseudorandom cTLS requires that headers have predictable lengths.  This creates the following limitations:
 
 * If a Connection ID is negotiated, it MUST always be included.
 * If the Sequence Number is not suppressed in the template, it MUST always have 16-bit length.
@@ -124,7 +124,6 @@ Normally, when TLS runs on top of a streaming transport, Connection IDs are not 
 The transformation performed by the sender takes the following inputs:
 
 * `STPRP-Encipher()` and `key` from `template.pseudorandom`
-* `hdr_length`, the length of the cTLS Unified Header (normally 3)
 * `template.profile_id` from the cTLS template
 
 The sender transforms each cTLS record as follows:
@@ -133,19 +132,21 @@ The sender transforms each cTLS record as follows:
     1. Set `tweak = "client hs" + profile_id` if sent by the client, or `"server hs" + profile_id` if sent by the server.
     2. Replace `fragment` with `STPRP-Encipher(key, tweak, fragment)`.
 2. Transform the record as follows:
-    1. Let `prefix` be the first `hdr_length + 16` bytes of the record.
-    2. Set `tweak = "client"` if sent by the client, or `"server"` if sent by the server.
-    3. If the record is CTLSCiphertext, append the 64-bit Sequence Number to `tweak`.
-    4. Replace `prefix` with `STPRP-Encipher(key, tweak, prefix)`.
+    1. Let `hdr_length` be the length of the record header (normally 3 for CTLSCiphertext or 4 for CTLSPlaintext).
+    2. Let `prefix` be the first `hdr_length + 16` bytes of the record.
+    3. Set `tweak = "client"` if sent by the client, or `"server"` if sent by the server.
+    4. If the record is CTLSCiphertext, append the 64-bit Sequence Number to `tweak`.
+    5. Replace `prefix` with `STPRP-Encipher(key, tweak, prefix)`.
 
+Note: This procedure assumes that handshake records are at least 16 bytes long.  This condition is automatically true in most configurations.
 
-Note: This requires that CTLSPlaintext records always have length at least `hdr_length + 16`.  This condition is automatically true in most configurations.
+> QUESTION: Is `fragment` actually meant to fragment records across multiple CTLSPlaintext structures?  If so, we need to specify that `STPRP-Encipher` is applied to the entire record, not the fragment, and deciphering could be very tricky.
 
 > OPEN ISSUE: How should we actually form the tweaks?  Can we assume arbitrary length?  Should we add some kind of chaining, within a stream or binding ServerHello to ClientHello?
 
 ### With Datagram Transports
 
-Pseudorandom cTLS applies to datagram applications of cTLS without restriction.  In this case, it's easier to specify the deciphering transformation applied by the recipient.
+Pseudorandom cTLS applies to datagram applications of cTLS without restriction.  If there are multiple records in the datagram, encipherment starts with the last record header and proceeds back-to-front.
 
 Given the inputs:
 
@@ -154,17 +155,18 @@ Given the inputs:
 * `template.profile_id`
 * `connection_id`, the ID expected on incoming CTLSCiphertext records
 
-The recipient performs the following steps:
+The recipient deciphers the datagram as follows:
 
-1. Let `max_hdr_length = max(len(profile_id) + 5, len(connection_id) + 5)`.  This represents the most data that might be needed to read the type and length of either record type.
+1. Let `max_hdr_length = len(connection_id) + 5`.  This represents the most data that might be needed to read the type and length of either record type.
 2. Let `index = 0`.
 3. While `index != len(payload)`:
     1. Let `prefix = payload[index : min(len(payload), index + max_hdr_length + 16)]`
     2. Let `tweak = "client datagram" + len(payload) + index` if sent by the client, or `"server datagram" + len(payload) + index` if sent by the server.
     3. Replace `prefix` with `STPRP-Decipher(key, tweak, prefix)`.
-    4. If `prefix[0] & 0xe0 != 0x20` (i.e. message is not CTLSCipherText):
-        1. Let `tweak` be `"client datagram hs" + profile_id + len(payload) + index` if sent by the client, or `"server datagram hs" + profile_id + len(payload) + index` if sent by the server.
-        2. Replace `CTLSPlaintext.fragment` with `STPRP-Decipher(key, tweak, fragment)`.
+    4. If `prefix[0] & 0xe0 != 0x20` (i.e. message is not CTLSCiphertext):
+        1. Parse the header as CTLSPlaintext to read the `profile_id`.
+        2. Let `tweak` be `"client datagram hs" + profile_id + len(payload) + index` if sent by the client, or `"server datagram hs" + profile_id + len(payload) + index` if sent by the server.
+        3. Replace `CTLSPlaintext.fragment` with `STPRP-Decipher(key, tweak, fragment)`.
     5. Set `index` to the end of this record.
 
 # Plaintext Alerts
@@ -179,11 +181,11 @@ Servers SHOULD expand any Alert message following the ClientHello to the same si
 
 # Operational Considerations
 
-Pseudorandom cTLS can interfere with the use of multiple profiles on a single server.  To use Pseudorandom cTLS with multiple profiles, servers must use the same STPRP key and the same lengths of `profile_id` and `connection_id`.
+Pseudorandom cTLS can interfere with the use of multiple profiles on a single server.  To use Pseudorandom cTLS with multiple profiles, servers must use the same STPRP key and the same lengths of `connection_id`.
 
 Pseudorandom cTLS adds a constant, symmetric computational cost to sending and receiving every record, roughly similar to the cost of encrypting a very small record.  The cryptographic cost of delivering small records will therefore be increased by a constant factor, and the computational cost of delivering large records will be almost unchanged.
 
-> TODO: Key rotation.  How does it work?  We could possibly use trial decryption, with parsing and profile-id matching as an implicit MAC.  There are at least 40 bits of collision-resistance there for a max-length `profile_id`, which is probably fine, but it feels bit soft.  Does it help if we put a "key ID" in the tweak?
+> TODO: Key rotation.  How does it work?  We could possibly use trial decryption, with parsing and profile-id matching as an implicit MAC, but it feels a bit soft.  Does it help if we put a "key ID" in the tweak?
 
 # Security Considerations
 
@@ -195,7 +197,7 @@ In datagram mode, the `profile_id` and `connection_id` fields allow a server to 
 
 # Privacy Considerations
 
-Pseudorandom cTLS is intended to improve privacy in scenarios where the adversary lacks access to the cTLS template.  However, if the adversary does have access to the cTLS template, and the template does not have a `profile_id`, Pseudorandom cTLS can reduce privacy, by enabling strong confirmation that a connection is indeed using that template.
+Pseudorandom cTLS is intended to improve privacy in scenarios where the adversary lacks access to the cTLS template.  However, if the adversary does have access to the cTLS template, and the template does not have a distinctive `profile_id`, Pseudorandom cTLS can reduce privacy, by enabling strong confirmation that a connection is indeed using that template.
 
 # IANA Considerations {#iana}
 
