@@ -158,7 +158,7 @@ Given the inputs:
 
 The recipient deciphers the datagram as follows:
 
-1. Let `max_hdr_length = max(16, len(connection_id) + 5)`.  This represents the most data that might be needed to read the DTLS Handshake header ({{Section 4.3 of !DTLS13=I-D.draft-ietf-tls-dtls13-43}}) or the CTLSCiphertext header.
+1. Let `max_hdr_length = max(16, len(connection_id) + 5)`.  This represents the most data that might be needed to read the DTLS Handshake header ({{Section 5.2 of !DTLS13=I-D.draft-ietf-tls-dtls13-43}}) or the CTLSCiphertext header.
 2. Let `index = 0`.
 3. While `index != len(payload)`:
     1. Let `prefix = payload[index : min(len(payload), index + max_hdr_length + 16)]`
