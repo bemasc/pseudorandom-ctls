@@ -130,7 +130,7 @@ The sender first constructs any CTLSPlaintext records as follows:
 
 1. Set `tweak = "client hs" + profile_id` if sent by the client, or `"server hs" + profile_id` if sent by the server.
 2. Replace the message with `STPRP-Encipher(key, tweak, message)`.
-3. Fragment the message if necessary, ensuring at least 16 bytes of message in each fragment.
+3. Fragment the message if necessary, ensuring each fragment is at least 16 bytes long.
 4. Change the `content_type` of the final fragment to `ctls_handshake_end(TBD)`.
 
 Note: This procedure assumes that handshake messages are at least 16 bytes long.  This condition is automatically true in most configurations.
