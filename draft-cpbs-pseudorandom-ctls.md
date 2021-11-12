@@ -133,7 +133,7 @@ The sender first constructs any CTLSPlaintext records as follows:
 3. Fragment the message if necessary, ensuring each fragment is at least 16 bytes long.
 4. Change the `content_type` of the final fragment to `ctls_handshake_end(TBD)`.
 
-Note: This procedure assumes that handshake messages are at least 16 bytes long.  This condition is automatically true in most configurations.
+Note: This procedure requires that handshake messages are at least 16 bytes long.  This condition is automatically true in most configurations.
 
 The sender then constructs cTLS records as usual, but applies the following transformation before sending each record:
 
