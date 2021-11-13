@@ -124,7 +124,8 @@ HCTR2 is a fast TSPRP based on AES and a polynomial MAC (closely related to the 
 To provide a suitable cipher suite, we define the "twist" function as
 
 ~~~python
-twisted = input[:-16] + XOR(input[-16:], SHA256(input[:-16]))
+hash = SHA256(input[:-16])
+twisted = input[:-16] + XOR(input[-16:], hash[:16])
 ~~~
 
 i.e. XOR-ing the hash of the first `N-16` bytes of input onto the last 16 bytes of input.  `Untwist()` is identical to `Twist()`.
