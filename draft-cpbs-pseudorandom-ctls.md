@@ -205,17 +205,17 @@ Pseudorandom cTLS is intended to improve privacy in scenarios where the adversar
 
 The Pseudorandom cTLS extension is sufficient to enable a fully pseudorandom bitstream and prevent protocol confusion attacks in the handshake messages, but it does not prevent confusion attacks using the encrypted messages.  Much of the output is the original AEAD ciphertext, which could be controlled by an adversary in this threat model.
 
-As a defense for this threat model, this draft introduces the `TLS_SHA256_AES_(128/256)_CTR` cipher suites.  These cipher suites provide a nonce-misuse-resistant AEAD algorithm {{!RFC5116}} with `K_LEN = 16` or `32`, `N_MIN = 0`, `N_MAX = 255`, and `A_MAX = P_MAX = infinity`.
+As a defense for this threat model, this draft introduces the `TLS_SHA256_AES_(128/256)_CTR` cipher suites.  These cipher suites provide an AEAD algorithm {{!RFC5116}} with `K_LEN = 16` or `32`, `N_MIN = 0`, `N_MAX = 255`, and `A_MAX = P_MAX = infinity`.
 
-Unlike most AEAD algorithms, these cipher suites ensure that the sender cannot control any bit of the ciphertext except by trial encryption.  Fixing `N` bits of the ciphertext to desired values requires the attacker to perform `2^N` trial encryptions, so fixing more than 128 bits of ciphertext to desired values is computationally infeasible.  Additionally, these trials cannot begin until after the handshake and are specific to a single message, so practical limits on `N` are likely to be considerably lower.
+Unlike most AEAD algorithms, these cipher suites ensure that the sender cannot control any bit of the ciphertext except by trial encryption.  Fixing `N` bits of the ciphertext to desired values requires the attacker to perform `2^N` trial encryptions, so fixing more than 128 bits of ciphertext to desired values is computationally infeasible.  These trials cannot begin until after the handshake and are specific to a single sequence number, so practical limits on `N` are likely to be considerably lower.
 
-These cipher suites employ an unusual "MAC-and-Encrypt" construction, using HMAC-SHA256 {{!RFC2104}} and AES in Counter mode.  The HMAC output initializes the encryption process, ensuring that any change to the plaintext re-randomizes the ciphertext.  (HMAC-SHA256 is also used for the HKDF in the TLS handshake.)
+These cipher suites employ an unusual "MAC-and-Encrypt" construction, using HMAC-SHA256 {{!RFC2104}} and AES in Counter mode.  The HMAC output initializes the encryption process, ensuring that any change to the plaintext re-randomizes the ciphertext.  (HMAC-SHA256 is also used for the HKDF in the TLS handshake.)  In formal terms, this AEAD construction prevents known-key distinguishing attacks {{?KNOWNKEY=DOI.10.1007/978-3-662-43933-3_18}}.  (The construction is also nonce-misuse-resistant, although this is not relevant to TLS.)
 
 These cipher suites are less efficient than AES-GCM, so they SHOULD NOT be used unless Pseudorandom cTLS is enabled and ciphertext confusion attacks are relevant.  Their computational cost is expected to be similar to the `TLS_*_WITH_AES_(128/256)_CBC_SHA256` cipher suites from TLS 1.2 ({{Appendix A.5 of ?RFC5246}}).  Encryption requires two passes over each message, but decryption can still be performed in a single pass.
 
 ## Encryption
 
-Encryption is represented by the syntax `AEAD-Encrypt(key, nonce, additional_data, plaintext)`, with a 16- or 32-byte `key`.  AES in Counter mode is represented as `AES-CTR(key, initial_counter_block, plaintext)` as in {{Section 4 of ?RFC8452}}.
+Encryption is represented by the syntax `AEAD-Encrypt(key, nonce, additional_data, plaintext)`, as in {{Section 5.2 of ?RFC8446}}.  AES in Counter mode is represented as `AES-CTR(key, initial_counter_block, plaintext)`, as in {{Section 4 of ?RFC8452}}.
 
 1. Let `mac = HMAC-SHA256(key || len(nonce) || nonce || additional_data, plaintext)[:16]`, with `len(nonce)` as a single octet.
 2. Return `mac || AES-CTR(key, mac, plaintext)`.
@@ -224,10 +224,10 @@ Encryption is represented by the syntax `AEAD-Encrypt(key, nonce, additional_dat
 
 ## Decryption
 
-Decryption is represented by the function `AEAD-Decrypt(key, nonce, additional_data, ciphertext)`.
+Decryption proceeds from the key, nonce, additional_data, and ciphertext as follows:
 
 1. Let `mac1 = ciphertext[:16]`.
-2. Recover `plaintext = AES-CTR-Decrypt(key, mac1, ciphertext[16:])`.
+2. Recover `plaintext = AES-CTR(key, mac1, ciphertext[16:])`.
 3. Compute `mac2` from `plaintext` as during encryption.
 4. If constant-time comparison of `mac1` and `mac2` indicates that they are equal, return `plaintext`.
 5. Otherwise, indicate an error due to MAC mismatch.
@@ -240,8 +240,8 @@ We assume the existence of an IANA registry of Strong Tweakable Pseudorandom Per
 
 IANA is requested to add the following registrations to the TLS Cipher Suites registry:
 
-| ------ | ----------------------------- | ------- | ----------- | --------------- |
 | Value  | Description                   | DTLS-OK | Recommended | Reference       |
+| ------ | ----------------------------- | ------- | ----------- | --------------- |
 | TBD1   | TLS_SHA256_AES_128_CTR        | Y       | N           | (This document) |
 | TBD2   | TLS_SHA256_AES_256_CTR        | Y       | N           | (This document) |
 
