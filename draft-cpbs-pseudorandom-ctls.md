@@ -63,10 +63,10 @@ The goal of this extension is to enable two endpoints to agree on a TLS-based pr
 
 ### Requirements
 
-* Protocol confusion attack resistance: Neither party has any influence over the bytes emitted by the other party.
 * Privacy: A third party without access to the template cannot tell whether two connections are using the same pseudorandom cTLS template, or two different pseudorandom cTLS templates.
 * Ossification risk: Every byte sent on the underlying transport is pseudorandom to an observer who does not know the cTLS template.
 * Efficiency: Zero size overhead and minimal CPU cost.  Support for servers with many cTLS templates, when appropriately constructed.
+* Protocol confusion attack resistance: The sender can ensure that the wire image does not deviate substantially from pseudorandom, even if the plaintext is controlled by an attacker who knows all the secrets.
 
 ### Non-requirements
 
@@ -103,14 +103,13 @@ STPRP-Decipher(key, tweak, ciphertext) -> message
 
 The STPRP specifies the length (in bytes) of the key.  The tweak is a byte string of any length.  The STPRP uses the key and tweak to encipher the input message, which also may have any length.  The output ciphertext has the same length as the input message.
 
-The Pseudorandom cTLS design assumes that the negotiated AEAD algorithm produces pseudorandom ciphertexts.  This is not a requirement of the AEAD specification {{!RFC5116}}, but it is true of popular AEAD algorithms like AES-GCM and ChaCha20-Poly1305.
-
+The Pseudorandom cTLS design assumes that the negotiated AEAD algorithm produces pseudorandom ciphertexts.  This is not a requirement of the AEAD specification {{!RFC5116}}, but it is true of popular AEAD algorithms like AES-GCM and ChaCha20-Poly1305.  (See {{mac-and-encrypt}} for handling of hostile plaintext.)
 
 Pseudorandom cTLS uses the STPRP to encipher all plaintext handshake records, including the record headers.  As long as there is sufficient entropy in the `key_share` extension or `random` field of the ClientHello (resp. ServerHello) the STPRP output will be pseudorandom.
 
 > TODO: Check that the assumptions hold for HelloRetryRequest.  As long as no handshake messages are repeated verbatim, it should be fine, but we need to check whether an active attacker can trigger a replay.
 
-Pseudorandom cTLS also enciphers every record header.  In addition to the header, 16 bytes of the AEAD ciphertext itself is enciphered to ensure the input has enough entropy.  All currently registered AEAD algorithms produce at least this much ciphertext from any input.  Any AEAD algorithm that can produce smaller ciphertexts is not compatible with this specification.
+Pseudorandom cTLS also enciphers every record header.  In addition to the header, 16 bytes of the AEAD ciphertext itself is enciphered to ensure the input has enough entropy.  Any AEAD algorithm that can produce smaller ciphertexts is not compatible with this specification.
 
 ### With Streaming Transports
 
@@ -172,7 +171,7 @@ CTLSPlaintext records are subject to an additional decipherment step:
 2. Let `tweak` be `"client datagram hs" + profile_id + Handshake.msg_type` if sent by the client, or `"server datagram hs" + profile_id + Handshake.msg_type` if sent by the server.
 3. Replace `Handshake.body` with `STPRP-Decipher(key, tweak, Handshake.body)`.
 
-# Plaintext Alerts
+## Plaintext Alerts
 
 Representing plaintext alerts (i.e. CTLSPlaintext messages with `content_type = alert(TBD)`) requires additional steps, because Alert fragments have little entropy.
 
@@ -182,7 +181,7 @@ Servers SHOULD expand any Alert message following the ClientHello to the same si
 
 > QUESTION: Are there client-issued Alerts in response to malformed ServerHello?
 
-# Operational Considerations
+## Operational Considerations
 
 Pseudorandom cTLS can interfere with the use of multiple profiles on a single server.  To use Pseudorandom cTLS with multiple profiles, servers must use the same STPRP key and the same lengths of `connection_id`.
 
@@ -190,7 +189,7 @@ Pseudorandom cTLS adds a constant, symmetric computational cost to sending and r
 
 > TODO: Key rotation.  How does it work?  We could possibly use trial decryption, with parsing and profile-id matching as an implicit MAC, but it feels a bit soft.  Does it help if we put a "key ID" in the tweak?
 
-# Security Considerations
+## Security Considerations
 
 Pseudorandom cTLS operates as a layer between cTLS and its transport, so the security properties of cTLS are largely preserved.  However, there are some small differences.
 
@@ -198,13 +197,53 @@ In datagram mode, the `profile_id` and `connection_id` fields allow a server to 
 
 > TODO: More precise security properties and security proof.  The goal we're after hasn't been widely considered in the literature so far, at least as far as we can tell.  The basic idea is that the "real" protocol (Pseudorandom cTLS) should be indistinguishable from some "target" protocol that the network is known tolerate.  The assumption is that middleboxes would not attempt to parse packets whose contents are pseudorandom.  (The same idea underlies QUIC's wire encoding format {{!RFC9000}}.)   A starting point might be the formal notion of "Observational Equivalence" (https://infsec.ethz.ch/content/dam/ethz/special-interest/infk/inst-infsec/information-security-group-dam/research/publications/pub2015/ASPObsEq.pdf).
 
-# Privacy Considerations
+## Privacy Considerations
 
 Pseudorandom cTLS is intended to improve privacy in scenarios where the adversary lacks access to the cTLS template.  However, if the adversary does have access to the cTLS template, and the template does not have a distinctive `profile_id`, Pseudorandom cTLS can reduce privacy, by enabling strong confirmation that a connection is indeed using that template.
+
+# The `TLS_SHA256_AES_(128/256)_CTR` Cipher Suites {#mac-and-encrypt}
+
+The Pseudorandom cTLS extension is sufficient to enable a fully pseudorandom bitstream and prevent protocol confusion attacks in the handshake messages, but it does not prevent confusion attacks using the encrypted messages.  Much of the output is the original AEAD ciphertext, which could be controlled by an adversary in this threat model.
+
+As a defense for this threat model, this draft introduces the `TLS_SHA256_AES_(128/256)_CTR` cipher suites.  These cipher suites provide a nonce-misuse-resistant AEAD algorithm {{!RFC5116}} with `K_LEN = 16` or `32`, `N_MIN = 0`, `N_MAX = 255`, and `A_MAX = P_MAX = infinity`.
+
+Unlike most AEAD algorithms, these cipher suites ensure that the sender cannot control any bit of the ciphertext except by trial encryption.  Fixing `N` bits of the ciphertext to desired values requires the attacker to perform `2^N` trial encryptions, so fixing more than 128 bits of ciphertext to desired values is computationally infeasible.  Additionally, these trials cannot begin until after the handshake and are specific to a single message, so practical limits on `N` are likely to be considerably lower.
+
+These cipher suites employ an unusual "MAC-and-Encrypt" construction, using HMAC-SHA256 {{!RFC2104}} and AES in Counter mode.  The HMAC output initializes the encryption process, ensuring that any change to the plaintext re-randomizes the ciphertext.  (HMAC-SHA256 is also used for the HKDF in the TLS handshake.)
+
+These cipher suites are less efficient than AES-GCM, so they SHOULD NOT be used unless Pseudorandom cTLS is enabled and ciphertext confusion attacks are relevant.  Their computational cost is expected to be similar to the `TLS_*_WITH_AES_(128/256)_CBC_SHA256` cipher suites from TLS 1.2 ({{Appendix A.5 of ?RFC5246}}).  Encryption requires two passes over each message, but decryption can still be performed in a single pass.
+
+## Encryption
+
+Encryption is represented by the syntax `AEAD-Encrypt(key, nonce, additional_data, plaintext)`, with a 16- or 32-byte `key`.  AES in Counter mode is represented as `AES-CTR(key, initial_counter_block, plaintext)` as in {{Section 4 of ?RFC8452}}.
+
+1. Let `mac = HMAC-SHA256(key || len(nonce) || nonce || additional_data, plaintext)[:16]`, with `len(nonce)` as a single octet.
+2. Return `mac || AES-CTR(key, mac, plaintext)`.
+
+> TODO: Determine key usage limits.
+
+## Decryption
+
+Decryption is represented by the function `AEAD-Decrypt(key, nonce, additional_data, ciphertext)`.
+
+1. Let `mac1 = ciphertext[:16]`.
+2. Recover `plaintext = AES-CTR-Decrypt(key, mac1, ciphertext[16:])`.
+3. Compute `mac2` from `plaintext` as during encryption.
+4. If constant-time comparison of `mac1` and `mac2` indicates that they are equal, return `plaintext`.
+5. Otherwise, indicate an error due to MAC mismatch.
+
+Implementations MUST use only constant-time comparisons of the MACs.
 
 # IANA Considerations {#iana}
 
 We assume the existence of an IANA registry of Strong Tweakable Pseudorandom Permutations (STPRPs).  However, no such registry exists at present.  This draft is blocked until someone documents and registers a suitable STPRP algorithm.
+
+IANA is requested to add the following registrations to the TLS Cipher Suites registry:
+
+| ------ | ----------------------------- | ------- | ----------- | --------------- |
+| Value  | Description                   | DTLS-OK | Recommended | Reference       |
+| TBD1   | TLS_SHA256_AES_128_CTR        | Y       | N           | (This document) |
+| TBD2   | TLS_SHA256_AES_256_CTR        | Y       | N           | (This document) |
 
 --- back
 
