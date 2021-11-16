@@ -63,10 +63,10 @@ The goal of this extension is to enable two endpoints to agree on a TLS-based pr
 
 ### Requirements
 
-* Protocol confusion attack resistance: Neither party has any influence over the bytes emitted by the other party.
 * Privacy: A third party without access to the template cannot tell whether two connections are using the same pseudorandom cTLS template, or two different pseudorandom cTLS templates.
 * Ossification risk: Every byte sent on the underlying transport is pseudorandom to an observer who does not know the cTLS template.
-* Efficiency: Zero size overhead and minimal CPU cost.  Support for servers with many cTLS templates, when appropriately constructed.
+* Efficiency: Zero size overhead and minimal CPU cost in the simplest case.  Support for servers with many cTLS templates, when appropriately constructed.
+* Protocol confusion attack resistance: This attack assumes a malicious server or client that can coerce its peer into sending particular plaintext, in order to produce ciphertext that could be misinterpreted as a different protocol by a third party.  This extension must enable each peer to ensure that its own output is unlikely to resemble any other protocol.
 
 ### Non-requirements
 
@@ -77,7 +77,7 @@ The goal of this extension is to enable two endpoints to agree on a TLS-based pr
 
 ## Form
 
-A cTLS template is structured as a JSON object.  This extension is represented by an additional key, "pseudorandom", whose value is an object with two string-valued keys: "stprp" (a name from the STPRP registry (see {{iana}})) and "key" (a base64-encoded shared secret whose length is specified by the STPRP).  For example, a cTLS template might contain an entry like:
+A cTLS template is structured as a JSON object.  This extension is represented by an additional key, "pseudorandom", whose value is an object with two mandatory string-valued keys: "stprp" (a name from the STPRP registry (see {{iana}})) and "key" (a base64-encoded shared secret whose length is specified by the STPRP).  For example, a cTLS template might contain an entry like:
 
 ~~~json
 "pseudorandom": {
@@ -103,14 +103,13 @@ STPRP-Decipher(key, tweak, ciphertext) -> message
 
 The STPRP specifies the length (in bytes) of the key.  The tweak is a byte string of any length.  The STPRP uses the key and tweak to encipher the input message, which also may have any length.  The output ciphertext has the same length as the input message.
 
-The Pseudorandom cTLS design assumes that the negotiated AEAD algorithm produces pseudorandom ciphertexts.  This is not a requirement of the AEAD specification {{!RFC5116}}, but it is true of popular AEAD algorithms like AES-GCM and ChaCha20-Poly1305.
-
+The Pseudorandom cTLS design assumes that the negotiated AEAD algorithm produces pseudorandom ciphertexts.  This is not a requirement of the AEAD specification {{!RFC5116}}, but it is true of popular AEAD algorithms like AES-GCM and ChaCha20-Poly1305.  (See {{extra-entropy}} for handling of hostile plaintext.)
 
 Pseudorandom cTLS uses the STPRP to encipher all plaintext handshake records, including the record headers.  As long as there is sufficient entropy in the `key_share` extension or `random` field of the ClientHello (resp. ServerHello) the STPRP output will be pseudorandom.
 
 > TODO: Check that the assumptions hold for HelloRetryRequest.  As long as no handshake messages are repeated verbatim, it should be fine, but we need to check whether an active attacker can trigger a replay.
 
-Pseudorandom cTLS also enciphers every record header.  In addition to the header, 16 bytes of the AEAD ciphertext itself is enciphered to ensure the input has enough entropy.  All currently registered AEAD algorithms produce at least this much ciphertext from any input.  Any AEAD algorithm that can produce smaller ciphertexts is not compatible with this specification.
+Pseudorandom cTLS also enciphers every record header.  In addition to the header, 16 bytes of the AEAD ciphertext itself is enciphered to ensure the input has enough entropy.  Any AEAD algorithm that can produce smaller ciphertexts is not compatible with this specification.
 
 ### With Streaming Transports
 
@@ -172,6 +171,25 @@ CTLSPlaintext records are subject to an additional decipherment step:
 2. Let `tweak` be `"client datagram hs" + profile_id + Handshake.msg_type` if sent by the client, or `"server datagram hs" + profile_id + Handshake.msg_type` if sent by the server.
 3. Replace `Handshake.body` with `STPRP-Decipher(key, tweak, Handshake.body)`.
 
+## Optional defense against protocol confusion {#extra-entropy}
+
+The procedure described above is sufficient to render the bitstream pseudorandom to a third party when both peers are operating correctly.  However, if a malicious client or server can coerce its peer into sending particular plaintext (as is common in web browsers), it can choose plaintext with knowledge of the encryption keys, in order to produce ciphertext that has visible structure to a third party.  This technique can be used to mount protocol confusion attacks {{SLIPSTREAM}}.
+
+This attack is particularly straightforward when using the AES-GCM or ChaCha20-Poly1305 cipher suites, as much of the ciphertext is encrypted by XOR with a stream cipher.  A malicious peer in this threat model can choose desired ciphertext, encrypt it with that keystream to produce the plaintext, and rely on the other peer's encryption stage to reverse the encryption and reveal the desired ciphertext.
+
+As a defense for this threat model, the Pseudorandom cTLS extension supports two optional keys named "client-entropy" and "server-entropy".  Each key's value is an integer `E` in the range 1..16.  When the "client-entropy" key is present, the client MUST modify each outgoing ciphertext message as follows:
+
+1. Let `tweak = "client " + (dtls ? "datagram " : "") + "body"
+2. Append the 64-bit Sequence Number to `tweak`.
+3. Let `R` be a string containing `E` fresh random bytes.
+4. Replace `CTLSCiphertext.encrypted_record` with `R + STPRP-Encipher(key, tweak + R, CTLSCiphertext.encrypted_record)`.
+
+The server MUST apply a similar transformation if the "server-entropy" key is present.
+
+This transformation does not alter the `Length` field in the Unified Header, so it does not reduce the maximum plaintext record size.  However, it does increase the output message size, which may impact MTU calculations in DTLS.
+
+If `R` is computed using a pseudo-random number generator, it MUST be cryptographically secure and keyed with at least 16 bytes of entropy that is not known to the peer.
+
 # Plaintext Alerts
 
 Representing plaintext alerts (i.e. CTLSPlaintext messages with `content_type = alert(TBD)`) requires additional steps, because Alert fragments have little entropy.
@@ -188,6 +206,8 @@ Pseudorandom cTLS can interfere with the use of multiple profiles on a single se
 
 Pseudorandom cTLS adds a constant, symmetric computational cost to sending and receiving every record, roughly similar to the cost of encrypting a very small record.  The cryptographic cost of delivering small records will therefore be increased by a constant factor, and the computational cost of delivering large records will be almost unchanged.
 
+The optional defense against ciphertext confusion attacks further increases the overall computational cost, generally at least doubling the cost of delivering large records.  It also adds up to 16 bytes of overhead to each encrypted record.
+
 > TODO: Key rotation.  How does it work?  We could possibly use trial decryption, with parsing and profile-id matching as an implicit MAC, but it feels a bit soft.  Does it help if we put a "key ID" in the tweak?
 
 # Security Considerations
@@ -195,6 +215,8 @@ Pseudorandom cTLS adds a constant, symmetric computational cost to sending and r
 Pseudorandom cTLS operates as a layer between cTLS and its transport, so the security properties of cTLS are largely preserved.  However, there are some small differences.
 
 In datagram mode, the `profile_id` and `connection_id` fields allow a server to reject almost all packets from a sender who does not know the template (e.g. a DDoS attacker), with minimal CPU cost.  Pseudorandom cTLS requires the server to apply a decryption operation to every incoming datagram before establishing whether it might be valid.  This operation is O(1) and uses only symmetric cryptography, so the impact is expected to be bearable in most deployments.
+
+cTLS templates are presumed to be published by the server operator.  In order to defend against ciphertext confusion attacks ({{extra-entropy}}), the client MUST refuse connection unless the server provides a cTLS template with a "client-entropy" value that meets the client's requirements.
 
 > TODO: More precise security properties and security proof.  The goal we're after hasn't been widely considered in the literature so far, at least as far as we can tell.  The basic idea is that the "real" protocol (Pseudorandom cTLS) should be indistinguishable from some "target" protocol that the network is known tolerate.  The assumption is that middleboxes would not attempt to parse packets whose contents are pseudorandom.  (The same idea underlies QUIC's wire encoding format {{!RFC9000}}.)   A starting point might be the formal notion of "Observational Equivalence" (https://infsec.ethz.ch/content/dam/ethz/special-interest/infk/inst-infsec/information-security-group-dam/research/publications/pub2015/ASPObsEq.pdf).
 
