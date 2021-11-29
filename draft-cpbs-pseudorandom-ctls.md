@@ -220,7 +220,7 @@ Encryption is represented by the syntax `AEAD-Encrypt(key, nonce, additional_dat
 1. Let `mac = HMAC-SHA256(key || len(nonce) || nonce || additional_data, plaintext)[:16]`, with `len(nonce)` as a single octet.
 2. Return `mac || AES-CTR(key, mac, plaintext)`.
 
-> TODO: Determine key usage limits.
+> TODO: Determine key usage limits.  (Best current estimate: `2^28.5` max-length messages at `2^-57` collision probability, based on {{?BIRTHDAY=DOI.10.2307/2317022}}.)
 
 ## Decryption
 
