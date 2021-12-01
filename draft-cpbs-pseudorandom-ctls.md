@@ -201,15 +201,15 @@ In datagram mode, the `profile_id` and `connection_id` fields allow a server to 
 
 Pseudorandom cTLS is intended to improve privacy in scenarios where the adversary lacks access to the cTLS template.  However, if the adversary does have access to the cTLS template, and the template does not have a distinctive `profile_id`, Pseudorandom cTLS can reduce privacy, by enabling strong confirmation that a connection is indeed using that template.
 
-# The `TLS_SHA256_AES_(128/256)_CTR` Cipher Suites {#mac-and-encrypt}
+# The `TLS_AES_(128/256)_SHA256_SIV` Cipher Suites {#mac-and-encrypt}
 
 The Pseudorandom cTLS extension is sufficient to enable a fully pseudorandom bitstream and prevent protocol confusion attacks in the handshake messages, but it does not prevent confusion attacks using the encrypted messages.  Much of the output is the original AEAD ciphertext, which could be controlled by an adversary in this threat model.
 
-As a defense for this threat model, this draft introduces the `TLS_SHA256_AES_(128/256)_CTR` cipher suites.  These cipher suites provide an AEAD algorithm {{!RFC5116}} with `K_LEN = 16` or `32`, `N_MIN = 0`, `N_MAX = 255`, and `A_MAX = P_MAX = infinity`.
+As a defense for this threat model, this draft introduces the `TLS_AES_(128/256)_SHA256_SIV` cipher suites.  These cipher suites provide an AEAD algorithm {{!RFC5116}} with `K_LEN = 16` or `32`, `N_MIN = 0`, `N_MAX = 255`, and `A_MAX = P_MAX = infinity`.
 
 Unlike most AEAD algorithms, these cipher suites ensure that the sender cannot control any bit of the ciphertext except by trial encryption.  Fixing `N` bits of the ciphertext to desired values requires the attacker to perform `2^N` trial encryptions, so fixing more than 128 bits of ciphertext to desired values is computationally infeasible.  These trials cannot begin until after the handshake and are specific to a single sequence number, so practical limits on `N` are likely to be considerably lower.
 
-These cipher suites employ an unusual "MAC-and-Encrypt" construction, using HMAC-SHA256 {{!RFC2104}} and AES in Counter mode.  The HMAC output initializes the encryption process, ensuring that any change to the plaintext re-randomizes the ciphertext.  (HMAC-SHA256 is also used for the HKDF in the TLS handshake.)  In formal terms, this AEAD construction prevents known-key distinguishing attacks {{?KNOWNKEY=DOI.10.1007/978-3-662-43933-3_18}}.  (The construction is also nonce-misuse-resistant, although this is not relevant to TLS.)
+These cipher suites employ a Synthetic Initialization Vector construction, similar to SIV-AES {{?RFC5297}} and AES-GCM-SIV {{?RFC8452}} but using HMAC-SHA256 {{!RFC2104}} as the MAC.  The HMAC output initializes the encryption process, ensuring that any change to the plaintext re-randomizes the ciphertext.  (HMAC-SHA256 is also used for the HKDF in the TLS handshake.)  In formal terms, this AEAD construction prevents known-key distinguishing attacks {{?KNOWNKEY=DOI.10.1007/978-3-662-43933-3_18}}.  (The construction is also nonce-misuse-resistant, although this is not relevant to TLS.)
 
 These cipher suites are less efficient than AES-GCM, so they SHOULD NOT be used unless Pseudorandom cTLS is enabled and ciphertext confusion attacks are relevant.  Their computational cost is expected to be similar to the `TLS_*_WITH_AES_(128/256)_CBC_SHA256` cipher suites from TLS 1.2 ({{Appendix A.5 of ?RFC5246}}).  Encryption requires two passes over each message, but decryption can still be performed in a single pass.
 
