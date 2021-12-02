@@ -103,7 +103,7 @@ STPRP-Decipher(key, tweak, ciphertext) -> message
 
 The STPRP specifies the length (in bytes) of the key.  The tweak is a byte string of any length.  The STPRP uses the key and tweak to encipher the input message, which also may have any length.  The output ciphertext has the same length as the input message.
 
-The Pseudorandom cTLS design assumes that the negotiated AEAD algorithm produces pseudorandom ciphertexts.  This is not a requirement of the AEAD specification {{!RFC5116}}, but it is true of popular AEAD algorithms like AES-GCM and ChaCha20-Poly1305.  (See {{mac-and-encrypt}} for handling of hostile plaintext.)
+The Pseudorandom cTLS design assumes that the negotiated AEAD algorithm produces pseudorandom ciphertexts.  This is not a requirement of the AEAD specification {{!RFC5116}}, but it is true of popular AEAD algorithms like AES-GCM and ChaCha20-Poly1305.  (See {{aes-sha-siv}} for handling of hostile plaintext.)
 
 Pseudorandom cTLS uses the STPRP to encipher all plaintext handshake records, including the record headers.  As long as there is sufficient entropy in the `key_share` extension or `random` field of the ClientHello (resp. ServerHello) the STPRP output will be pseudorandom.
 
@@ -201,7 +201,7 @@ In datagram mode, the `profile_id` and `connection_id` fields allow a server to 
 
 Pseudorandom cTLS is intended to improve privacy in scenarios where the adversary lacks access to the cTLS template.  However, if the adversary does have access to the cTLS template, and the template does not have a distinctive `profile_id`, Pseudorandom cTLS can reduce privacy, by enabling strong confirmation that a connection is indeed using that template.
 
-# The `TLS_AES_(128/256)_SHA256_SIV` Cipher Suites {#mac-and-encrypt}
+# The `TLS_AES_(128/256)_SHA256_SIV` Cipher Suites {#aes-sha-siv}
 
 The Pseudorandom cTLS extension is sufficient to enable a fully pseudorandom bitstream and prevent protocol confusion attacks in the handshake messages, but it does not prevent confusion attacks using the encrypted messages.  Much of the output is the original AEAD ciphertext, which could be controlled by an adversary in this threat model.
 
@@ -217,7 +217,7 @@ These cipher suites are less efficient than AES-GCM, so they SHOULD NOT be used 
 
 Encryption is represented by the syntax `AEAD-Encrypt(key, nonce, additional_data, plaintext)`, as in {{Section 5.2 of ?RFC8446}}.  AES in Counter mode is represented as `AES-CTR(key, initial_counter_block, plaintext)`, as in {{Section 4 of ?RFC8452}}.
 
-1. Let `mac = HMAC-SHA256(key || len(nonce) || nonce || additional_data, plaintext)[:16]`, with `len(nonce)` as a single octet.
+1. Let `mac = HMAC-SHA256(len(key) || len(nonce) || key || additional_data || nonce, plaintext)[:16]`, with `len()` as a single octet.
 2. Return `mac || AES-CTR(key, mac, plaintext)`.
 
 > TODO: Determine key usage limits.  (Best current estimate: `2^30.5` max-length messages at `2^-57` collision probability, based on {{?BIRTHDAY=DOI.10.2307/2317022}}.)
