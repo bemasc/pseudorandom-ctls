@@ -103,7 +103,7 @@ STPRP-Decipher(key, tweak, ciphertext) -> message
 
 The STPRP specifies the length (in bytes) of the key.  The tweak is a byte string of any length.  The STPRP uses the key and tweak to encipher the input message, which also may have any length.  The output ciphertext has the same length as the input message.
 
-The Pseudorandom cTLS design assumes that the negotiated AEAD algorithm produces pseudorandom ciphertexts.  This is not a requirement of the AEAD specification {{!RFC5116}}, but it is true of popular AEAD algorithms like AES-GCM and ChaCha20-Poly1305.  (See {{aes-sha-siv}} for handling of hostile plaintext.)
+The Pseudorandom cTLS design assumes that the negotiated AEAD algorithm produces pseudorandom ciphertexts.  This is not a requirement of the AEAD specification {{!RFC5116}}, but it is true of popular AEAD algorithms like AES-GCM and ChaCha20-Poly1305.  (See {{aes-sha2-siv}} for handling of hostile plaintext.)
 
 Pseudorandom cTLS uses the STPRP to encipher all plaintext handshake records, including the record headers.  As long as there is sufficient entropy in the `key_share` extension or `random` field of the ClientHello (resp. ServerHello) the STPRP output will be pseudorandom.
 
@@ -201,15 +201,17 @@ In datagram mode, the `profile_id` and `connection_id` fields allow a server to 
 
 Pseudorandom cTLS is intended to improve privacy in scenarios where the adversary lacks access to the cTLS template.  However, if the adversary does have access to the cTLS template, and the template does not have a distinctive `profile_id`, Pseudorandom cTLS can reduce privacy, by enabling strong confirmation that a connection is indeed using that template.
 
-# The `TLS_AES_(128/256)_SHA256_SIV` Cipher Suites {#aes-sha-siv}
+# The `TLS_AES_(128/256)_SHA256_SIV` Cipher Suites {#aes-sha2-siv}
 
 The Pseudorandom cTLS extension is sufficient to enable a fully pseudorandom bitstream and prevent protocol confusion attacks in the handshake messages, but it does not prevent confusion attacks using the encrypted messages.  Much of the output is the original AEAD ciphertext, which could be controlled by an adversary in this threat model.
 
-As a defense for this threat model, this draft introduces the `TLS_AES_(128/256)_SHA256_SIV` cipher suites.  These cipher suites provide an AEAD algorithm {{!RFC5116}} with `K_LEN = 16` or `32`, `N_MIN = 0`, `N_MAX = 255`, and `A_MAX = P_MAX = infinity`.
+As a defense for this threat model, this draft introduces the `TLS_AES_(128/256)_SHA256_SIV` cipher suites.  These cipher suites provide an AEAD algorithm {{!RFC5116}} with `K_LEN = 16` or `32`, `N_MIN = 0`, `N_MAX = 255`, and `A_MAX = P_MAX = infinity`.  They employ a Synthetic Initialization Vector construction, similar to SIV-AES {{?RFC5297}} and AES-GCM-SIV {{?RFC8452}} but using HMAC-SHA256 {{!RFC2104}} as the MAC.  We call this AEAD family "AES-SHA2-SIV".
 
-Unlike most AEAD algorithms, these cipher suites ensure that the sender cannot control any bit of the ciphertext except by trial encryption.  Fixing `N` bits of the ciphertext to desired values requires the attacker to perform `2^N` trial encryptions, so fixing more than 128 bits of ciphertext to desired values is computationally infeasible.  These trials cannot begin until after the handshake and are specific to a single sequence number, so practical limits on `N` are likely to be considerably lower.
+In SIV cipher modes, the MAC output initializes the encryption process.  In AES-SHA2-SIV, the MAC is a secure hash function even when the key is known.  The sender therefore cannot control any bit of the ciphertext except by trial encryption.  Fixing `N` bits of the ciphertext to desired values requires the attacker to perform `2^N` trial encryptions, so fixing more than 128 bits of ciphertext to desired values is computationally infeasible.  These trials cannot begin until after the TLS handshake, so practical limits on `N` are likely to be considerably lower.
 
-These cipher suites employ a Synthetic Initialization Vector construction, similar to SIV-AES {{?RFC5297}} and AES-GCM-SIV {{?RFC8452}} but using HMAC-SHA256 {{!RFC2104}} as the MAC.  The HMAC output initializes the encryption process, ensuring that any change to the plaintext re-randomizes the ciphertext.  (HMAC-SHA256 is also used for the HKDF in the TLS handshake.)  In formal terms, this AEAD construction prevents known-key distinguishing attacks {{?KNOWNKEY=DOI.10.1007/978-3-662-43933-3_18}}.  (The construction is also nonce-misuse-resistant, although this is not relevant to TLS.)
+In formal terms, this construction prevents known-key distinguishing attacks {{?KNOWNKEY=DOI.10.1007/978-3-662-43933-3_18}}.  AES-SHA2-SIV is also nonce-misuse-resistant, although this is not relevant to TLS.
+
+In these cipher suites, HMAC-SHA256 is also used to construct the HKDF for the TLS handshake.
 
 These cipher suites are less efficient than AES-GCM, so they SHOULD NOT be used unless Pseudorandom cTLS is enabled and ciphertext confusion attacks are relevant.  Their computational cost is expected to be similar to the `TLS_*_WITH_AES_(128/256)_CBC_SHA256` cipher suites from TLS 1.2 ({{Appendix A.5 of ?RFC5246}}).  Encryption requires two passes over each message, but decryption can still be performed in a single pass.
 
@@ -242,8 +244,8 @@ IANA is requested to add the following registrations to the TLS Cipher Suites re
 
 | Value  | Description                   | DTLS-OK | Recommended | Reference       |
 | ------ | ----------------------------- | ------- | ----------- | --------------- |
-| TBD1   | TLS_SHA256_AES_128_CTR        | Y       | N           | (This document) |
-| TBD2   | TLS_SHA256_AES_256_CTR        | Y       | N           | (This document) |
+| TBD1   | TLS_AES_128_SHA256_SIV        | Y       | N           | (This document) |
+| TBD2   | TLS_AES_256_SHA256_SIV        | Y       | N           | (This document) |
 
 --- back
 
