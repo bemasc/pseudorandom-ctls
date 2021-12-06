@@ -103,7 +103,7 @@ STPRP-Decipher(key, tweak, ciphertext) -> message
 
 The STPRP specifies the length (in bytes) of the key.  The tweak is a byte string of any length.  The STPRP uses the key and tweak to encipher the input message, which also may have any length.  The output ciphertext has the same length as the input message.
 
-The Pseudorandom cTLS design assumes that the negotiated AEAD algorithm produces pseudorandom ciphertexts.  This is not a requirement of the AEAD specification {{!RFC5116}}, but it is true of popular AEAD algorithms like AES-GCM and ChaCha20-Poly1305.  (See {{extra-entropy}} for handling of hostile plaintext.)
+The Pseudorandom cTLS design assumes that the negotiated AEAD algorithm produces pseudorandom ciphertexts.  This is not a requirement of the AEAD specification {{!RFC5116}}, but it is true of popular AEAD algorithms like AES-GCM and ChaCha20-Poly1305.  (See {{confusion-defense}} for handling of hostile plaintext.)
 
 Pseudorandom cTLS uses the STPRP to encipher all plaintext handshake records, including the record headers.  As long as there is sufficient entropy in the `key_share` extension or `random` field of the ClientHello (resp. ServerHello) the STPRP output will be pseudorandom.
 
@@ -171,24 +171,28 @@ CTLSPlaintext records are subject to an additional decipherment step:
 2. Let `tweak` be `"client datagram hs" + profile_id + Handshake.msg_type` if sent by the client, or `"server datagram hs" + profile_id + Handshake.msg_type` if sent by the server.
 3. Replace `Handshake.body` with `STPRP-Decipher(key, tweak, Handshake.body)`.
 
-## Optional defense against protocol confusion {#extra-entropy}
+## Optional defense against protocol confusion {#confusion-defense}
 
 The procedure described above is sufficient to render the bitstream pseudorandom to a third party when both peers are operating correctly.  However, if a malicious client or server can coerce its peer into sending particular plaintext (as is common in web browsers), it can choose plaintext with knowledge of the encryption keys, in order to produce ciphertext that has visible structure to a third party.  This technique can be used to mount protocol confusion attacks {{SLIPSTREAM}}.
 
 This attack is particularly straightforward when using the AES-GCM or ChaCha20-Poly1305 cipher suites, as much of the ciphertext is encrypted by XOR with a stream cipher.  A malicious peer in this threat model can choose desired ciphertext, XOR it with the keystream to produce the malicious plaintext, and rely on the other peer's encryption stage to reverse the encryption and reveal the desired ciphertext.
 
-As a defense for this threat model, the Pseudorandom cTLS extension supports two optional keys named "client-entropy" and "server-entropy".  Each key's value is an integer `E` in the range 1..16.  When the "client-entropy" key is present, the client MUST modify each outgoing ciphertext message as follows:
+As a defense for this threat model, the Pseudorandom cTLS extension supports two optional keys named "client-recipher" and "server-recipher".  Each key's value is an integer `E` in the range 0..16 indicating how much entropy to add.  When the "client-recipher" key is present, the client MUST modify each outgoing ciphertext message as follows:
 
 1. Let `tweak = "client " + (dtls ? "datagram " : "") + "body"
 2. Append the 64-bit Sequence Number to `tweak`.
 3. Let `R` be a string containing `E` fresh random bytes.
 4. Replace `CTLSCiphertext.encrypted_record` with `R + STPRP-Encipher(key, tweak + R, CTLSCiphertext.encrypted_record)`.
 
-The server MUST apply a similar transformation if the "server-entropy" key is present.
+The server MUST apply a similar transformation if the "server-recipher" key is present.
 
 This transformation does not alter the `Length` field in the Unified Header, so it does not reduce the maximum plaintext record size.  However, it does increase the output message size, which may impact MTU calculations in DTLS.
 
 If `R` is computed using a pseudo-random number generator, it MUST be cryptographically secure and keyed with at least 16 bytes of entropy that is not known to the peer.
+
+When `E=0`, this process fails to defend against ciphertext confusion attacks for a general STPRP and AEAD.  A malicious peer can easily construct plaintext such that the STPRP output contains a desired bytestring.  Templates MUST NOT specify `E=0` unless the STPRP is known to be safe from known-key distinguishing attacks {{?KNOWNKEY=DOI.10.1007/978-3-662-43933-3_18}}, which most are not.
+
+In general, a malicious peer can still produce desired ciphertext with probability `2^-8E` for each attempt by guessing a value of `R`.  Accordingly, values of `E` less than 8 are NOT RECOMMENDED for general use.
 
 # Plaintext Alerts
 
@@ -216,7 +220,7 @@ Pseudorandom cTLS operates as a layer between cTLS and its transport, so the sec
 
 In datagram mode, the `profile_id` and `connection_id` fields allow a server to reject almost all packets from a sender who does not know the template (e.g. a DDoS attacker), with minimal CPU cost.  Pseudorandom cTLS requires the server to apply a decryption operation to every incoming datagram before establishing whether it might be valid.  This operation is O(1) and uses only symmetric cryptography, so the impact is expected to be bearable in most deployments.
 
-cTLS templates are presumed to be published by the server operator.  In order to defend against ciphertext confusion attacks ({{extra-entropy}}), the client MUST refuse connection unless the server provides a cTLS template with a "client-entropy" value that meets the client's requirements.
+cTLS templates are presumed to be published by the server operator.  In order to defend against ciphertext confusion attacks ({{confusion-defense}}), the client MUST refuse connection unless the server provides a cTLS template with a sufficiently large "client-recipher" value.
 
 > TODO: More precise security properties and security proof.  The goal we're after hasn't been widely considered in the literature so far, at least as far as we can tell.  The basic idea is that the "real" protocol (Pseudorandom cTLS) should be indistinguishable from some "target" protocol that the network is known tolerate.  The assumption is that middleboxes would not attempt to parse packets whose contents are pseudorandom.  (The same idea underlies QUIC's wire encoding format {{!RFC9000}}.)   A starting point might be the formal notion of "Observational Equivalence" (https://infsec.ethz.ch/content/dam/ethz/special-interest/infk/inst-infsec/information-security-group-dam/research/publications/pub2015/ASPObsEq.pdf).
 
