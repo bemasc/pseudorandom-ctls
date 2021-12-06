@@ -66,7 +66,7 @@ The goal of this extension is to enable two endpoints to agree on a TLS-based pr
 * Privacy: A third party without access to the template cannot tell whether two connections are using the same pseudorandom cTLS template, or two different pseudorandom cTLS templates.
 * Ossification risk: Every byte sent on the underlying transport is pseudorandom to an observer who does not know the cTLS template.
 * Efficiency: Zero size overhead and minimal CPU cost.  Support for servers with many cTLS templates, when appropriately constructed.
-* Protocol confusion attack resistance: This attack assumes a malicious server or client that can coerce its peer into sending particular plaintext, in order to produce ciphertext that could be misinterpreted as a different protocol by a third party.  This extension must enable each peer to ensure that its own output is pseudorandom or nearly-pseudorandom in such a scenario.
+* Protocol confusion attack resistance: This attack assumes a malicious server or client that can coerce its peer into sending particular plaintext, in order to produce ciphertext that could be misinterpreted as a different protocol by a third party.  This extension must enable each peer to ensure that its own output is unlikely to resemble any other protocol.
 
 The sender can ensure that the wire image does not deviate substantially from pseudorandom, even if the plaintext is controlled by an attacker who knows all the secrets.
 
@@ -209,11 +209,11 @@ The Pseudorandom cTLS extension is sufficient to render the bitstream pseudorand
 
 This attack is particularly straightforward when using the AES-GCM or ChaCha20-Poly1305 cipher suites, as much of the ciphertext is encrypted by XOR with a stream cipher.  A malicious peer in this threat model can choose desired ciphertext, encrypt it with that keystream to produce the plaintext, and rely on the other peer's encryption stage to reverse the encryption and reveal the desired ciphertext.
 
-As a defense for this threat model, this draft introduces the `TLS_AES_(128/256)_SHA256_SIV` cipher suites.  These cipher suites provide an AEAD algorithm {{!RFC5116}} with `K_LEN = 16` or `32`, `N_MIN = 0`, `N_MAX = 255`, and `A_MAX = P_MAX = infinity`.  They employ a Synthetic Initialization Vector construction, similar to SIV-AES {{?RFC5297}} and AES-GCM-SIV {{?RFC8452}} but using HMAC-SHA256 {{!RFC2104}} as the MAC.  We call this AEAD family "AES-SHA2-SIV".
+As a defense for this threat model, this draft introduces the `TLS_AES_(128/256)_SHA256_SIV` cipher suites.  These cipher suites provide an AEAD algorithm {{!RFC5116}} with `K_LEN = 16` or `32`, `N_MIN = 0`, `N_MAX = 255`, and `A_MAX = P_MAX = infinity`.  They employ a Synthetic Initialization Vector construction, similar to SIV-AES {{?RFC5297}} and AES-GCM-SIV {{?RFC8452}} but using HMAC-SHA256 {{!RFC2104}} as the MAC.  This construction is generically secure (see "Scheme A4" in {{?NRS14=DOI.10.1007/978-3-642-55220-5}}).  We call this AEAD family "AES-SHA2-SIV".
 
 In SIV cipher modes, the MAC output initializes the encryption process.  In AES-SHA2-SIV, the MAC is a secure hash function even when the key is known.  The sender therefore cannot control any bit of the ciphertext except by trial encryption.  Fixing `N` bits of the ciphertext to desired values requires the attacker to perform `2^N` trial encryptions, so fixing more than 128 bits of ciphertext to desired values is computationally infeasible.  These trials cannot begin until after the TLS handshake, so practical limits on `N` are likely to be considerably lower.
 
-In formal terms, this construction prevents known-key distinguishing attacks {{?KNOWNKEY=DOI.10.1007/978-3-662-43933-3_18}}.  AES-SHA2-SIV is also nonce-misuse-resistant, although this is not relevant to TLS.
+In formal terms, AES-SHA2-SIV aims to provide Indifferentiable Authenticated Encryption {{?AB18=DOI.10.1007/978-3-319-96884-1_7}}.  It is also nonce-misuse-resistant, although this is not relevant to TLS.
 
 In these cipher suites, HMAC-SHA256 is also used to construct the HKDF for the TLS handshake.
 
