@@ -68,8 +68,6 @@ The goal of this extension is to enable two endpoints to agree on a TLS-based pr
 * Efficiency: Zero size overhead and minimal CPU cost.  Support for servers with many cTLS templates, when appropriately constructed.
 * Protocol confusion attack resistance: This attack assumes a malicious server or client that can coerce its peer into sending particular plaintext, in order to produce ciphertext that could be misinterpreted as a different protocol by a third party.  This extension must enable each peer to ensure that its own output is unlikely to resemble any other protocol.
 
-The sender can ensure that the wire image does not deviate substantially from pseudorandom, even if the plaintext is controlled by an attacker who knows all the secrets.
-
 ### Non-requirements
 
 * Efficient support for demultiplexing arbitrary cTLS templates.
