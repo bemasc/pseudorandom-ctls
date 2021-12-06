@@ -66,7 +66,9 @@ The goal of this extension is to enable two endpoints to agree on a TLS-based pr
 * Privacy: A third party without access to the template cannot tell whether two connections are using the same pseudorandom cTLS template, or two different pseudorandom cTLS templates.
 * Ossification risk: Every byte sent on the underlying transport is pseudorandom to an observer who does not know the cTLS template.
 * Efficiency: Zero size overhead and minimal CPU cost.  Support for servers with many cTLS templates, when appropriately constructed.
-* Protocol confusion attack resistance: The sender can ensure that the wire image does not deviate substantially from pseudorandom, even if the plaintext is controlled by an attacker who knows all the secrets.
+* Protocol confusion attack resistance: This attack assumes a malicious server or client that can coerce its peer into sending particular plaintext, in order to produce ciphertext that could be misinterpreted as a different protocol by a third party.  This extension must enable each peer to ensure that its own output is pseudorandom or nearly-pseudorandom in such a scenario.
+
+The sender can ensure that the wire image does not deviate substantially from pseudorandom, even if the plaintext is controlled by an attacker who knows all the secrets.
 
 ### Non-requirements
 
@@ -203,7 +205,9 @@ Pseudorandom cTLS is intended to improve privacy in scenarios where the adversar
 
 # The `TLS_AES_(128/256)_SHA256_SIV` Cipher Suites {#aes-sha2-siv}
 
-The Pseudorandom cTLS extension is sufficient to enable a fully pseudorandom bitstream and prevent protocol confusion attacks in the handshake messages, but it does not prevent confusion attacks using the encrypted messages.  Much of the output is the original AEAD ciphertext, which could be controlled by an adversary in this threat model.
+The Pseudorandom cTLS extension is sufficient to render the bitstream pseudorandom to a third party when both peers are operating correctly.  However, if a malicious client or server can coerce its peer into sending particular plaintext (as is common in web browsers), it can choose plaintext with knowledge of the encryption keys, in order to produce ciphertext that has visible structure to a third party.  This technique can be used to mount protocol confusion attacks {{SLIPSTREAM}}.
+
+This attack is particularly straightforward when using the AES-GCM or ChaCha20-Poly1305 cipher suites, as much of the ciphertext is encrypted by XOR with a stream cipher.  A malicious peer in this threat model can choose desired ciphertext, encrypt it with that keystream to produce the plaintext, and rely on the other peer's encryption stage to reverse the encryption and reveal the desired ciphertext.
 
 As a defense for this threat model, this draft introduces the `TLS_AES_(128/256)_SHA256_SIV` cipher suites.  These cipher suites provide an AEAD algorithm {{!RFC5116}} with `K_LEN = 16` or `32`, `N_MIN = 0`, `N_MAX = 255`, and `A_MAX = P_MAX = infinity`.  They employ a Synthetic Initialization Vector construction, similar to SIV-AES {{?RFC5297}} and AES-GCM-SIV {{?RFC8452}} but using HMAC-SHA256 {{!RFC2104}} as the MAC.  We call this AEAD family "AES-SHA2-SIV".
 
