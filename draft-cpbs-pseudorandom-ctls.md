@@ -175,7 +175,7 @@ CTLSPlaintext records are subject to an additional decipherment step:
 
 The procedure described above is sufficient to render the bitstream pseudorandom to a third party when both peers are operating correctly.  However, if a malicious client or server can coerce its peer into sending particular plaintext (as is common in web browsers), it can choose plaintext with knowledge of the encryption keys, in order to produce ciphertext that has visible structure to a third party.  This technique can be used to mount protocol confusion attacks {{SLIPSTREAM}}.
 
-This attack is particularly straightforward when using the AES-GCM or ChaCha20-Poly1305 cipher suites, as much of the ciphertext is encrypted by XOR with a stream cipher.  A malicious peer in this threat model can choose desired ciphertext, encrypt it with that keystream to produce the plaintext, and rely on the other peer's encryption stage to reverse the encryption and reveal the desired ciphertext.
+This attack is particularly straightforward when using the AES-GCM or ChaCha20-Poly1305 cipher suites, as much of the ciphertext is encrypted by XOR with a stream cipher.  A malicious peer in this threat model can choose desired ciphertext, XOR it with the keystream to produce the malicious plaintext, and rely on the other peer's encryption stage to reverse the encryption and reveal the desired ciphertext.
 
 As a defense for this threat model, the Pseudorandom cTLS extension supports two optional keys named "client-entropy" and "server-entropy".  Each key's value is an integer `E` in the range 1..16.  When the "client-entropy" key is present, the client MUST modify each outgoing ciphertext message as follows:
 
