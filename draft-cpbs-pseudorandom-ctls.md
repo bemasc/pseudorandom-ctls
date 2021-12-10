@@ -77,7 +77,7 @@ The goal of this extension is to enable two endpoints to agree on a TLS-based pr
 
 ## Form
 
-A cTLS template is structured as a JSON object.  This extension is represented by an additional key, "pseudorandom", whose value is an object with two string-valued keys: "tsprp" (a name from the TSPRP registry (see {{iana}})) and "key" (a base64-encoded shared secret whose length is specified by the TSPRP).  For example, a cTLS template might contain an entry like:
+A cTLS template is structured as a JSON object.  This extension is represented by an additional key, "pseudorandom", whose value is an object with at least two string-valued keys: "tsprp" (a name from the TSPRP registry (see {{iana}})) and "key" (a base64-encoded shared secret whose length is specified by the TSPRP).  For example, a cTLS template might contain an entry like:
 
 ~~~json
 "pseudorandom": {
@@ -172,6 +172,16 @@ CTLSPlaintext records are subject to an additional decipherment step:
 2. Let `tweak` be `"client datagram hs" + profile_id + Handshake.msg_type` if sent by the client, or `"server datagram hs" + profile_id + Handshake.msg_type` if sent by the server.
 3. Replace `Handshake.body` with `TSPRP-Decipher(key, tweak, Handshake.body)`.
 
+## Optional Keys
+
+### "start-tag"
+
+In some deployments, it may be necessary or valuable to authenticate that a ClientHello was issued with a particular Pseudorandom cTLS configuration.  Merely deciphering the ClientHello, and observing that it parses correctly, does not conclusively prove that it was issued as expected.  It is possible, though not likely, that a random byte sequence could be parsed as a valid cTLS ClientHello.
+
+To require proof that the sender was using a particular Pseudorandom cTLS template, the template MAY include the optional key "start-tag" whose value is an integer `T` in the range `1..32`.  When this key is present, the client MUST prepend `T` zero bytes to the ClientHello before calling `TSPRP-Encipher()` on the ClientHello payload, and the server SHOULD verify that these bytes are zero after calling `TSPRP-Decipher()`.  This arrangement authenticates the STPRP.  The indicated length in the `Handshake` header is not altered, so this does not reduce the maximum handshake message size.
+
+Start tags can be used to enable rotation of the Pseudorandom cTLS key.  With a tag in place, servers can use trial decryption to identify which key (old or new) is in use for each new connection.  To avoid false matches, values of `T` less than 4 are NOT RECOMMENDED.
+
 # Plaintext Alerts
 
 Representing plaintext alerts (i.e. CTLSPlaintext messages with `content_type = alert(TBD)`) requires additional steps, because Alert fragments have little entropy.
@@ -187,8 +197,6 @@ Servers SHOULD expand any Alert message following the ClientHello to the same si
 Pseudorandom cTLS can interfere with the use of multiple profiles on a single server.  To use Pseudorandom cTLS with multiple profiles, servers must use the same TSPRP key and the same lengths of `connection_id`.
 
 Pseudorandom cTLS adds a constant, symmetric computational cost to sending and receiving every record, roughly similar to the cost of encrypting a very small record.  The cryptographic cost of delivering small records will therefore be increased by a constant factor, and the computational cost of delivering large records will be almost unchanged.
-
-> TODO: Key rotation.  How does it work?  We could possibly use trial decryption, with parsing and profile-id matching as an implicit MAC, but it feels a bit soft.  Does it help if we put a "key ID" in the tweak?
 
 # Security Considerations
 
