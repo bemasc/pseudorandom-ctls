@@ -180,7 +180,7 @@ In some deployments, it may be necessary or valuable to authenticate that a Clie
 
 To require proof that the sender was using a particular Pseudorandom cTLS template, the template MAY include the optional key "start-tag" whose value is an integer `T` in the range `1..32`.  When this key is present, the client MUST prepend `T` zero bytes to the ClientHello before calling `TSPRP-Encipher()` on the ClientHello payload, and the server SHOULD verify that these bytes are zero after calling `TSPRP-Decipher()`.  This arrangement authenticates the STPRP.  The indicated length in the `Handshake` header is not altered, so this does not reduce the maximum handshake message size.
 
-Start tags can be used to enable rotation of the Pseudorandom cTLS key.  With a tag in place, servers can use trial decryption to identify which key (old or new) is in use for each new connection.  To avoid false matches, values of `T` less than 4 are NOT RECOMMENDED.
+Start tags can be used to enable rotation of the Pseudorandom cTLS key.  With a tag in place, servers can use trial decryption to identify which key (old or new) is in use for each new connection.  To avoid false matches, values of `T` less than 8 are NOT RECOMMENDED.
 
 # Plaintext Alerts
 
