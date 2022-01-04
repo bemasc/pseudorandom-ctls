@@ -103,13 +103,13 @@ TSPRP-Decipher(key, tweak, ciphertext) -> message
 
 The TSPRP specifies the length (in bytes) of the key.  The tweak is a byte string of any length.  The TSPRP uses the key and tweak to encipher the input message, which also may have any length.  The output ciphertext has the same length as the input message.
 
-The Pseudorandom cTLS design assumes that the negotiated AEAD algorithm produces pseudorandom ciphertexts.  This is not a requirement of the AEAD specification {{!RFC5116}}, but it is true of popular AEAD algorithms like AES-GCM and ChaCha20-Poly1305.  (See {{confusion-defense}} for handling of hostile plaintext.)
-
 Pseudorandom cTLS uses the TSPRP to encipher all plaintext handshake records, including the record headers.  As long as there is sufficient entropy in the `key_share` extension or `random` field of the ClientHello (resp. ServerHello) the TSPRP output will be pseudorandom.
 
 > TODO: Check that the assumptions hold for HelloRetryRequest.  As long as no handshake messages are repeated verbatim, it should be fine, but we need to check whether an active attacker can trigger a replay.
 
 Pseudorandom cTLS also enciphers every record header.  In addition to the header, 16 bytes of the AEAD ciphertext itself is enciphered to ensure the input has enough entropy.  Any AEAD algorithm whose ciphertext overhead is less than 16 bytes is not compatible with this specification.
+
+By default, Pseudorandom cTLS assumes that the TLS ciphertext is using an AEAD algorithm whose output is purely pseudorandom, such as AES-GCM and ChaCha20-Poly1305.  If the ciphertext might not be pseudorandom (e.g. when handling hostile plaintext), the ciphertext can be "reciphered" to ensure pseudorandomness (see {{confusion-defense}}).
 
 ### With Streaming Transports
 
@@ -177,11 +177,11 @@ CTLSPlaintext records are subject to an additional decipherment step:
 
 In some deployments, it may be necessary or valuable to authenticate that a ClientHello was issued with a particular Pseudorandom cTLS configuration.  Merely deciphering the ClientHello, and observing that it parses correctly, does not conclusively prove that it was issued as expected.  It is possible, though not likely, that a random byte sequence could be parsed as a valid cTLS ClientHello.
 
-To require proof that the sender was using a particular Pseudorandom cTLS template, the template MAY include the optional key "start-tag" whose value is an integer `T` in the range `1..32`.  When this key is present, the client MUST prepend `T` zero bytes to the ClientHello before calling `TSPRP-Encipher()` on the ClientHello payload, and the server SHOULD verify that these bytes are zero after calling `TSPRP-Decipher()`.  This arrangement authenticates the TSPRP {{?Encode-Then-Encipher=DOI.10.1007/3-540-44448-3_24}}.  The indicated length in the `Handshake` header is not altered, so this does not reduce the maximum handshake message size.
+To require proof that the sender was using a particular Pseudorandom cTLS template, the template MAY include the optional key "start-tag" whose value is an integer `T` between 1 and 32 (inclusive).  When this key is present, the client MUST prepend `T` zero bytes to the ClientHello before calling `TSPRP-Encipher()` on the ClientHello payload, and the server SHOULD verify that these bytes are zero after calling `TSPRP-Decipher()`.  This arrangement authenticates the TSPRP {{?Encode-Then-Encipher=DOI.10.1007/3-540-44448-3_24}}.  The indicated length in the `Handshake` header is not altered, so this does not reduce the maximum handshake message size.
 
 Start tags can be used to enable rotation of the Pseudorandom cTLS key.  With a tag in place, servers can use trial decryption to identify which key (old or new) is in use for each new connection.  To avoid false matches, values of `T` less than 8 are NOT RECOMMENDED.
 
-## Optional defense against protocol confusion {#confusion-defense}
+### "client-recipher" and "server-recipher" {#confusion-defense}
 
 The procedure described above is sufficient to render the bitstream pseudorandom to a third party when both peers are operating correctly.  However, if a malicious client or server can coerce its peer into sending particular plaintext (as is common in web browsers), it can choose plaintext with knowledge of the encryption keys, in order to produce ciphertext that has visible structure to a third party.  This technique can be used to mount protocol confusion attacks {{SLIPSTREAM}}.
 
@@ -193,7 +193,7 @@ As a defense against this attack, the Pseudorandom cTLS extension supports two o
 2. Append the 64-bit Sequence Number to `tweak`.
 3. Let `R` be a string containing `E` fresh random bytes.
 4. Append `R` to `tweak`.
-5. Replace `CTLSCiphertext.encrypted_record` with `R + STPRP-Encipher(key, tweak, CTLSCiphertext.encrypted_record)`.
+5. Replace `CTLSCiphertext.encrypted_record` with `R + TSPRP-Encipher(key, tweak, CTLSCiphertext.encrypted_record)`.
 
 The server MUST apply a similar transformation if the "server-recipher" key is present.
 
@@ -201,7 +201,7 @@ This transformation does not alter the `Length` field in the Unified Header, so 
 
 The sender MUST compute `R` using a cryptographically secure pseudo-random number generator (CSPRNG) whose seed contains at least 16 bytes of entropy that is not known to the peer.
 
-In general, a malicious peer can still produce desired ciphertext with probability `2^-8E` for each attempt by guessing a value of `R`.  Accordingly, values of `E` less than 8 are NOT RECOMMENDED for general use.
+In general, a malicious peer can still produce desired ciphertext with probability `2^-8E` for each attempt by guessing a value of `R`.  Accordingly, values of `E` less than 8 are NOT RECOMMENDED for defense against confusion attacks.
 
 # Plaintext Alerts
 
