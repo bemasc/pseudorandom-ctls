@@ -66,7 +66,7 @@ The goal of this extension is to enable two endpoints to agree on a TLS-based pr
 * Privacy: A third party without access to the template cannot tell whether two connections are using the same pseudorandom cTLS template, or two different pseudorandom cTLS templates.
 * Ossification risk: Every byte sent on the underlying transport is pseudorandom to an observer who does not know the cTLS template.
 * Efficiency: Zero size overhead and minimal CPU cost in the simplest case.  Support for servers with many cTLS templates, when appropriately constructed.
-* Protocol confusion attack resistance: This attack assumes a malicious server or client that can coerce its peer into sending particular plaintext, in order to produce ciphertext that could be misinterpreted as a different protocol by a third party.  This extension must enable each peer to ensure that its own output is unlikely to resemble any other protocol.
+* Protocol confusion attack resistance: This attack assumes a malicious server or client that can coerce its peer into sending a ciphertext that could be misinterpreted as a different protocol by a third party.  This extension must enable each peer to ensure that its own output is unlikely to resemble any other protocol.
 
 ### Non-requirements
 
@@ -109,7 +109,7 @@ Pseudorandom cTLS uses the STPRP to encipher all plaintext handshake records, in
 
 > TODO: Check that the assumptions hold for HelloRetryRequest.  As long as no handshake messages are repeated verbatim, it should be fine, but we need to check whether an active attacker can trigger a replay.
 
-Pseudorandom cTLS also enciphers every record header.  In addition to the header, 16 bytes of the AEAD ciphertext itself is enciphered to ensure the input has enough entropy.  Any AEAD algorithm that can produce smaller ciphertexts is not compatible with this specification.
+Pseudorandom cTLS also enciphers every record header.  In addition to the header, 16 bytes of the AEAD ciphertext itself is enciphered to ensure the input has enough entropy.  Any AEAD algorithm whose ciphertext overhead is less than 16 bytes is not compatible with this specification.
 
 ### With Streaming Transports
 
@@ -177,7 +177,7 @@ The procedure described above is sufficient to render the bitstream pseudorandom
 
 This attack is particularly straightforward when using the AES-GCM or ChaCha20-Poly1305 cipher suites, as much of the ciphertext is encrypted by XOR with a stream cipher.  A malicious peer in this threat model can choose desired ciphertext, XOR it with the keystream to produce the malicious plaintext, and rely on the other peer's encryption stage to reverse the encryption and reveal the desired ciphertext.
 
-As a defense for this threat model, the Pseudorandom cTLS extension supports two optional keys named "client-recipher" and "server-recipher".  Each key's value is an integer `E` in the range 0..16 indicating how much entropy to add.  When the "client-recipher" key is present, the client MUST modify each outgoing ciphertext message as follows:
+As a defense against this attack, the Pseudorandom cTLS extension supports two optional keys named "client-recipher" and "server-recipher".  Each key's value is an integer `E` between 0 and 16 (inclusive) indicating how much entropy to add.  When the "client-recipher" key is present, the client MUST modify each outgoing ciphertext message as follows:
 
 1. Let `tweak = "client " + (dtls ? "datagram " : "") + "body"
 2. Append the 64-bit Sequence Number to `tweak`.
@@ -220,7 +220,7 @@ Pseudorandom cTLS operates as a layer between cTLS and its transport, so the sec
 
 In datagram mode, the `profile_id` and `connection_id` fields allow a server to reject almost all packets from a sender who does not know the template (e.g. a DDoS attacker), with minimal CPU cost.  Pseudorandom cTLS requires the server to apply a decryption operation to every incoming datagram before establishing whether it might be valid.  This operation is O(1) and uses only symmetric cryptography, so the impact is expected to be bearable in most deployments.
 
-cTLS templates are presumed to be published by the server operator.  In order to defend against ciphertext confusion attacks ({{confusion-defense}}), the client MUST refuse connection unless the server provides a cTLS template with a sufficiently large "client-recipher" value.
+cTLS templates are presumed to be published by the server operator.  In order to defend against ciphertext confusion attacks ({{confusion-defense}}), the client MUST refuse to connect unless the server provides a cTLS template with a sufficiently large "client-recipher" value.
 
 > TODO: More precise security properties and security proof.  The goal we're after hasn't been widely considered in the literature so far, at least as far as we can tell.  The basic idea is that the "real" protocol (Pseudorandom cTLS) should be indistinguishable from some "target" protocol that the network is known tolerate.  The assumption is that middleboxes would not attempt to parse packets whose contents are pseudorandom.  (The same idea underlies QUIC's wire encoding format {{!RFC9000}}.)   A starting point might be the formal notion of "Observational Equivalence" (https://infsec.ethz.ch/content/dam/ethz/special-interest/infk/inst-infsec/information-security-group-dam/research/publications/pub2015/ASPObsEq.pdf).
 
