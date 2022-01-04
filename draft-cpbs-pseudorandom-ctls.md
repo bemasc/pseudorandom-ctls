@@ -43,7 +43,7 @@ This draft describes a cTLS extension that allows each party to emit a purely ps
 
 The contents of a two-party protocol as perceived by a third party are called the "wire image".
 
-A Strong Tweakable Pseudorandom Permutation (STPRP) is a variable-input-length block cipher that accepts a high-entropy "key" and low-entropy "tweak".
+A Tweakable Strong Pseudorandom Permutation (TSPRP) is a variable-input-length block cipher that is parameterized by a secret "key" and a public "tweak".  Also known as a "super-pseudorandom permutation" or "wide block cipher".
 
 {::boilerplate bcp14}
 
@@ -77,11 +77,11 @@ The goal of this extension is to enable two endpoints to agree on a TLS-based pr
 
 ## Form
 
-A cTLS template is structured as a JSON object.  This extension is represented by an additional key, "pseudorandom", whose value is an object with two mandatory string-valued keys: "stprp" (a name from the STPRP registry (see {{iana}})) and "key" (a base64-encoded shared secret whose length is specified by the STPRP).  For example, a cTLS template might contain an entry like:
+A cTLS template is structured as a JSON object.  This extension is represented by an additional key, "pseudorandom", whose value is an object with at least two string-valued keys: "tsprp" (a name from the TSPRP registry (see {{iana}})) and "key" (a base64-encoded shared secret whose length is specified by the TSPRP).  For example, a cTLS template might contain an entry like:
 
 ~~~json
 "pseudorandom": {
-  "stprp": "aes-128-cbc-mask-cbc",
+  "tsprp": "hctr2",
   "key": "nx2kEm50FCE...TyOhGOw477EHS"
 },
 ~~~
@@ -94,18 +94,18 @@ A cTLS template is structured as a JSON object.  This extension is represented b
 
 The cTLS Record Layer protocol is comprised of AEAD-encrypted ciphertext fragments interleaved with plaintext fragments.  Each record is prefixed by a plaintext header, and some records, like those containing the ClientHello and ServerHello, are not encrypted at all.  The ciphertext fragments are pseudorandom already, so this extension specifies a transformation of the plaintext fragments that ensures that all bits written to the wire are pseudorandom.
 
-Conceptually, the extension sits between the cTLS Record Layer and the underlying transport (e.g. TCP, UDP).  The transformation is based on an STPRP with the following syntax:
+Conceptually, the extension sits between the cTLS Record Layer and the underlying transport (e.g. TCP, UDP).  The transformation is based on a TSPRP with the following syntax:
 
 ~~~
-STPRP-Encipher(key, tweak, message) -> ciphertext
-STPRP-Decipher(key, tweak, ciphertext) -> message
+TSPRP-Encipher(key, tweak, message) -> ciphertext
+TSPRP-Decipher(key, tweak, ciphertext) -> message
 ~~~
 
-The STPRP specifies the length (in bytes) of the key.  The tweak is a byte string of any length.  The STPRP uses the key and tweak to encipher the input message, which also may have any length.  The output ciphertext has the same length as the input message.
+The TSPRP specifies the length (in bytes) of the key.  The tweak is a byte string of any length.  The TSPRP uses the key and tweak to encipher the input message, which also may have any length.  The output ciphertext has the same length as the input message.
 
 The Pseudorandom cTLS design assumes that the negotiated AEAD algorithm produces pseudorandom ciphertexts.  This is not a requirement of the AEAD specification {{!RFC5116}}, but it is true of popular AEAD algorithms like AES-GCM and ChaCha20-Poly1305.  (See {{confusion-defense}} for handling of hostile plaintext.)
 
-Pseudorandom cTLS uses the STPRP to encipher all plaintext handshake records, including the record headers.  As long as there is sufficient entropy in the `key_share` extension or `random` field of the ClientHello (resp. ServerHello) the STPRP output will be pseudorandom.
+Pseudorandom cTLS uses the TSPRP to encipher all plaintext handshake records, including the record headers.  As long as there is sufficient entropy in the `key_share` extension or `random` field of the ClientHello (resp. ServerHello) the TSPRP output will be pseudorandom.
 
 > TODO: Check that the assumptions hold for HelloRetryRequest.  As long as no handshake messages are repeated verbatim, it should be fine, but we need to check whether an active attacker can trigger a replay.
 
@@ -122,13 +122,13 @@ Normally, when TLS runs on top of a streaming transport, Connection IDs are not 
 
 The transformation performed by the sender takes the following inputs:
 
-* `STPRP-Encipher()` and `key` from `template.pseudorandom`
+* `TSPRP-Encipher()` and `key` from `template.pseudorandom`
 * `template.profile_id` from the cTLS template
 
 The sender first constructs any CTLSPlaintext records as follows:
 
 1. Set `tweak = "client hs" + profile_id` if sent by the client, or `"server hs" + profile_id` if sent by the server.
-2. Replace the message with `STPRP-Encipher(key, tweak, message)`.
+2. Replace the message with `TSPRP-Encipher(key, tweak, message)`.
 3. Fragment the message if necessary, ensuring each fragment is at least 16 bytes long.
 4. Change the `content_type` of the final fragment to `ctls_handshake_end(TBD)`.
 
@@ -140,7 +140,7 @@ The sender then constructs cTLS records as usual, but applies the following tran
 2. Let `prefix` be the first `hdr_length + 16` bytes of the record.
 3. Set `tweak = "client"` if sent by the client, or `"server"` if sent by the server.
 4. If the record is CTLSCiphertext, append the 64-bit Sequence Number to `tweak`.
-5. Replace `prefix` with `STPRP-Encipher(key, tweak, prefix)`.
+5. Replace `prefix` with `TSPRP-Encipher(key, tweak, prefix)`.
 
 > OPEN ISSUE: How should we actually form the tweaks?  Can we assume arbitrary length?  Should we add some kind of chaining, within a stream or binding ServerHello to ClientHello?
 
@@ -151,7 +151,7 @@ Pseudorandom cTLS applies to datagram applications of cTLS without restriction. 
 Given the inputs:
 
 * `payload`, an entire datagram that may contain multiple cTLS records.
-* `STPRP-Decipher()` and `key` from `template.pseudorandom`
+* `TSPRP-Decipher()` and `key` from `template.pseudorandom`
 * `template.profile_id`
 * `connection_id`, the ID expected on incoming CTLSCiphertext records
 
@@ -162,14 +162,24 @@ The recipient deciphers the datagram as follows:
 3. While `index != len(payload)`:
     1. Let `prefix = payload[index : min(len(payload), index + max_hdr_length + 16)]`
     2. Let `tweak = "client datagram" + len(payload) + index` if sent by the client, or `"server datagram" + len(payload) + index` if sent by the server.
-    3. Replace `prefix` with `STPRP-Decipher(key, tweak, prefix)`.
+    3. Replace `prefix` with `TSPRP-Decipher(key, tweak, prefix)`.
     5. Set `index` to the end of this record.
 
 CTLSPlaintext records are subject to an additional decipherment step:
 
 1. Perform fragment reassembly to recover the complete `Handshake.body` ({{Section 5.5 of !DTLS13}}).
 2. Let `tweak` be `"client datagram hs" + profile_id + Handshake.msg_type` if sent by the client, or `"server datagram hs" + profile_id + Handshake.msg_type` if sent by the server.
-3. Replace `Handshake.body` with `STPRP-Decipher(key, tweak, Handshake.body)`.
+3. Replace `Handshake.body` with `TSPRP-Decipher(key, tweak, Handshake.body)`.
+
+## Optional Keys
+
+### "start-tag"
+
+In some deployments, it may be necessary or valuable to authenticate that a ClientHello was issued with a particular Pseudorandom cTLS configuration.  Merely deciphering the ClientHello, and observing that it parses correctly, does not conclusively prove that it was issued as expected.  It is possible, though not likely, that a random byte sequence could be parsed as a valid cTLS ClientHello.
+
+To require proof that the sender was using a particular Pseudorandom cTLS template, the template MAY include the optional key "start-tag" whose value is an integer `T` in the range `1..32`.  When this key is present, the client MUST prepend `T` zero bytes to the ClientHello before calling `TSPRP-Encipher()` on the ClientHello payload, and the server SHOULD verify that these bytes are zero after calling `TSPRP-Decipher()`.  This arrangement authenticates the TSPRP {{?Encode-Then-Encipher=DOI.10.1007/3-540-44448-3_24}}.  The indicated length in the `Handshake` header is not altered, so this does not reduce the maximum handshake message size.
+
+Start tags can be used to enable rotation of the Pseudorandom cTLS key.  With a tag in place, servers can use trial decryption to identify which key (old or new) is in use for each new connection.  To avoid false matches, values of `T` less than 8 are NOT RECOMMENDED.
 
 ## Optional defense against protocol confusion {#confusion-defense}
 
@@ -205,13 +215,11 @@ Servers SHOULD expand any Alert message following the ClientHello to the same si
 
 # Operational Considerations
 
-Pseudorandom cTLS can interfere with the use of multiple profiles on a single server.  To use Pseudorandom cTLS with multiple profiles, servers must use the same STPRP key and the same lengths of `connection_id`.
+Pseudorandom cTLS can interfere with the use of multiple profiles on a single server.  To use Pseudorandom cTLS with multiple profiles, servers must use the same TSPRP key and the same lengths of `connection_id`.
 
 Pseudorandom cTLS adds a constant, symmetric computational cost to sending and receiving every record, roughly similar to the cost of encrypting a very small record.  The cryptographic cost of delivering small records will therefore be increased by a constant factor, and the computational cost of delivering large records will be almost unchanged.
 
 The optional defense against ciphertext confusion attacks further increases the overall computational cost, generally at least doubling the cost of delivering large records.  It also adds up to 16 bytes of overhead to each encrypted record.
-
-> TODO: Key rotation.  How does it work?  We could possibly use trial decryption, with parsing and profile-id matching as an implicit MAC, but it feels a bit soft.  Does it help if we put a "key ID" in the tweak?
 
 # Security Considerations
 
@@ -229,7 +237,7 @@ Pseudorandom cTLS is intended to improve privacy in scenarios where the adversar
 
 # IANA Considerations {#iana}
 
-We assume the existence of an IANA registry of Strong Tweakable Pseudorandom Permutations (STPRPs).  However, no such registry exists at present.  This draft is blocked until someone documents and registers a suitable STPRP algorithm.
+We assume the existence of an IANA registry of Strong Tweakable Pseudorandom Permutations (TSPRPs).  However, no such registry exists at present.  This draft is blocked until someone documents and registers a suitable TSPRP algorithm.
 
 --- back
 
