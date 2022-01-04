@@ -182,15 +182,14 @@ As a defense against this attack, the Pseudorandom cTLS extension supports two o
 1. Let `tweak = "client " + (dtls ? "datagram " : "") + "body"
 2. Append the 64-bit Sequence Number to `tweak`.
 3. Let `R` be a string containing `E` fresh random bytes.
-4. Replace `CTLSCiphertext.encrypted_record` with `R + STPRP-Encipher(key, tweak + R, CTLSCiphertext.encrypted_record)`.
+4. Append `R` to `tweak`.
+5. Replace `CTLSCiphertext.encrypted_record` with `R + STPRP-Encipher(key, tweak, CTLSCiphertext.encrypted_record)`.
 
 The server MUST apply a similar transformation if the "server-recipher" key is present.
 
 This transformation does not alter the `Length` field in the Unified Header, so it does not reduce the maximum plaintext record size.  However, it does increase the output message size, which may impact MTU calculations in DTLS.
 
-If `R` is computed using a pseudo-random number generator, it MUST be cryptographically secure and keyed with at least 16 bytes of entropy that is not known to the peer.
-
-When `E=0`, this process fails to defend against ciphertext confusion attacks for a general STPRP and AEAD.  A malicious peer can easily construct plaintext such that the STPRP output contains a desired bytestring.  Templates MUST NOT specify `E=0` unless the STPRP is known to be safe from known-key distinguishing attacks {{?KNOWNKEY=DOI.10.1007/978-3-662-43933-3_18}}, which most are not.
+The sender MUST compute `R` using a cryptographically secure pseudo-random number generator (CSPRNG) whose seed contains at least 16 bytes of entropy that is not known to the peer.
 
 In general, a malicious peer can still produce desired ciphertext with probability `2^-8E` for each attempt by guessing a value of `R`.  Accordingly, values of `E` less than 8 are NOT RECOMMENDED for general use.
 
