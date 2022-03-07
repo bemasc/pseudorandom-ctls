@@ -77,7 +77,7 @@ The goal of this extension is to enable two endpoints to agree on a TLS-based pr
 
 ## Form
 
-A cTLS template is structured as a JSON object.  This extension is represented by an additional key, "pseudorandom", whose value is an object with at least two string-valued keys: "tsprp" (a name from the TSPRP registry (see {{iana}})) and "key" (a base64-encoded shared secret whose length is specified by the TSPRP).  For example, a cTLS template might contain an entry like:
+A cTLS template is structured as a JSON object.  This extension is represented by an additional key, "pseudorandom", whose value is an object with at least two string-valued keys: "tsprp" (a name from the TSPRP registry (see {{tsprp-registry}})) and "key" (a base64-encoded shared secret whose length is specified by the TSPRP).  For example, a cTLS template might contain an entry like:
 
 ~~~json
 "pseudorandom": {
@@ -223,7 +223,7 @@ cTLS templates are presumed to be published by the server operator.  In order to
 
 Pseudorandom cTLS is intended to improve privacy in scenarios where the adversary lacks access to the cTLS template.  However, if the adversary does have access to the cTLS template, and the template does not have a distinctive `profile_id`, Pseudorandom cTLS can reduce privacy, by enabling strong confirmation that a connection is indeed using that template.
 
-# IANA Considerations {#iana}
+# IANA Considerations
 
 ## TSPRP Registry
 
