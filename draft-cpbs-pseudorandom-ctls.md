@@ -183,19 +183,11 @@ Start tags can be used to enable rotation of the Pseudorandom cTLS key.  With a 
 
 ### "client-recipher" and "server-recipher" {#confusion-defense}
 
-The procedure described above is sufficient to render the bitstream pseudorandom to a third party when both peers are operating correctly.  However, if a malicious client or server can coerce its peer into sending particular plaintext (as is common in web browsers), it can choose plaintext with knowledge of the encryption keys, in order to produce ciphertext that has visible structure to a third party.  This technique can be used to mount protocol confusion attacks {{SLIPSTREAM}}.
+The procedure described in {{use}} is sufficient to render the bitstream pseudorandom to a third party when both peers are operating correctly.  However, if a malicious client or server can coerce its peer into sending particular plaintext (as is common in web browsers), it can choose plaintext with knowledge of the encryption keys, in order to produce ciphertext that has visible structure to a third party.  This technique can be used to mount protocol confusion attacks {{SLIPSTREAM}}.
 
 This attack is particularly straightforward when using the AES-GCM or ChaCha20-Poly1305 cipher suites, as much of the ciphertext is encrypted by XOR with a stream cipher.  A malicious peer in this threat model can choose desired ciphertext, XOR it with the keystream to produce the malicious plaintext, and rely on the other peer's encryption stage to reverse the encryption and reveal the desired ciphertext.
 
-As a defense against this attack, the Pseudorandom cTLS extension supports two optional keys named "client-recipher" and "server-recipher".  Each key's value is an integer `E` between 0 and 16 (inclusive) indicating how much entropy to add.  When the "client-recipher" key is present, the client MUST modify each outgoing ciphertext message as follows:
-
-1. Let `tweak = "client " + (dtls ? "datagram " : "") + "body"
-2. Append the 64-bit Sequence Number to `tweak`.
-3. Let `R` be a string containing `E` fresh random bytes.
-4. Append `R` to `tweak`.
-5. Replace `CTLSCiphertext.encrypted_record` with `R + TSPRP-Encipher(key, tweak, CTLSCiphertext.encrypted_record)`.
-
-The server MUST apply a similar transformation if the "server-recipher" key is present.
+As a defense against this attack, the Pseudorandom cTLS extension supports two optional keys named "client-recipher" and "server-recipher".  Each key's value is an integer `E` between 0 and 16 (inclusive) indicating how much entropy to add.  When the "client-recipher" key is present, the client MUST prepend `E` fresh random bytes to `CTLSCiphertext.encrypted_record` before encipherment.  The server MUST apply a similar transformation if the "server-recipher" key is present.
 
 This transformation does not alter the `Length` field in the Unified Header, so it does not reduce the maximum plaintext record size.  However, it does increase the output message size, which may impact MTU calculations in DTLS.
 
@@ -207,7 +199,7 @@ In general, a malicious peer can still produce desired ciphertext with probabili
 
 Representing plaintext alerts (i.e. CTLSPlaintext messages with `content_type = alert(TBD)`) requires additional steps, because Alert fragments have little entropy.
 
-A standard TLS Alert fragment is always 2 bytes long.  In Pseudorandom cTLS, senders MUST append at least 16 random bytes to any plaintext Alert fragment.  Enciphering and deciphering then proceed identically to other CTLSPlaintext messages.  The recipient MUST remove these bytes before passing the CTLSPlaintext to the cTLS implementation.
+A standard TLS Alert fragment is always 2 bytes long.  In Pseudorandom cTLS, senders MUST prepend at least 16 random bytes to any plaintext Alert fragment.  Enciphering and deciphering then proceed identically to other CTLSPlaintext messages.  The recipient MUST remove these bytes before passing the CTLSPlaintext to the cTLS implementation.
 
 Servers SHOULD expand any Alert message following the ClientHello to the same size as their usual ServerHello, and SHOULD send additional random TCP segments or datagrams to match the sizes of subsequent components of their ordinary success response.  Otherwise, an adversary could use probing to learn the allowed lengths of ClientHellos and the fraction of ciphertexts that decipher to valid ClientHellos.
 
