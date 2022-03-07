@@ -31,6 +31,9 @@ informative:
   SLIPSTREAM:
     target: https://samy.pl/slipstream/
     title: NAT Slipstreaming v2.0
+  HCTR2:
+    target: https://eprint.iacr.org/2021/1441/20211027:085150
+    title: Length-preserving encryption with HCTR2
 
 
 --- abstract
@@ -142,7 +145,7 @@ The sender then constructs cTLS records as usual, but applies the following tran
 4. If the record is CTLSCiphertext, append the 64-bit Sequence Number to `tweak`.
 5. Replace `prefix` with `TSPRP-Encipher(key, tweak, prefix)`.
 
-> OPEN ISSUE: How should we actually form the tweaks?  Can we assume arbitrary length?  Should we add some kind of chaining, within a stream or binding ServerHello to ClientHello?
+> OPEN ISSUE: How should we actually form the tweaks?  Should we add some kind of chaining, within a stream or binding ServerHello to ClientHello?
 
 ### With Datagram Transports
 
@@ -238,6 +241,8 @@ Pseudorandom cTLS is intended to improve privacy in scenarios where the adversar
 # IANA Considerations {#iana}
 
 We assume the existence of an IANA registry of Strong Tweakable Pseudorandom Permutations (TSPRPs).  However, no such registry exists at present.  This draft is blocked until someone documents and registers a suitable TSPRP algorithm.
+
+A suitable TSPRP algorithm for this registry might be HCTR2 {{HCTR2}}.
 
 --- back
 
