@@ -54,7 +54,7 @@ A Tweakable Strong Pseudorandom Permutation (TSPRP) is a variable-input-length b
 
 ## Background
 
-Compact TLS {{!cTLS=I-D.draft-ietf-tls-ctls-04}} is a compact representation of TLS 1.3 (or later), intended for uses where compatibility with previous versions of TLS is not required.  It defines a pre-configuration object called a "template" that contains a profile of the capabilities and behaviors of a TLS server, which is known to both client and server before they initiate a connection.  The template allows both parties to omit information that is irrelevant or redundant, allowing a secure connection to be established while exchanging fewer bits on the wire.
+Compact TLS {{!cTLS=I-D.draft-ietf-tls-ctls-05}} is a compact representation of TLS 1.3 (or later), intended for uses where compatibility with previous versions of TLS is not required.  It defines a pre-configuration object called a "template" that contains a profile of the capabilities and behaviors of a TLS server, which is known to both client and server before they initiate a connection.  The template allows both parties to omit information that is irrelevant or redundant, allowing a secure connection to be established while exchanging fewer bits on the wire.
 
 Every cTLS template potentially results in a distinct wire image, with important implications for user privacy and ossification risk.
 
@@ -80,7 +80,7 @@ The goal of this extension is to enable two endpoints to agree on a TLS-based pr
 
 ## Form
 
-A cTLS template is structured as a JSON object.  This extension is represented by an additional key, "pseudorandom", whose value is an object with at least two string-valued keys: "tsprp" (a name from the TSPRP registry (see {{iana}})) and "key" (a base64-encoded shared secret whose length is specified by the TSPRP).  For example, a cTLS template might contain an entry like:
+A cTLS template is structured as a JSON object.  This extension is represented by an additional key, "pseudorandom", whose value is an object with at least two string-valued keys: "tsprp" (a name from the TSPRP registry (see {{tsprp-registry}})) and "key" (a base64-encoded shared secret whose length is specified by the TSPRP).  For example, a cTLS template might contain an entry like:
 
 ~~~json
 "pseudorandom": {
@@ -88,8 +88,6 @@ A cTLS template is structured as a JSON object.  This extension is represented b
   "key": "nx2kEm50FCE...TyOhGOw477EHS"
 },
 ~~~
-
-> TODO: Talk about compatibility.  Pseudorandom isn't backwards-compatible.  Is there even such a thing as a "cTLS extension"?
 
 > TODO: Consider having two keys, one for sending data from client to server and another for sending data from server to client, to align better with the TLS key schedule.  These could be specified explicitly or generated from a single secret by a KDF.
 
@@ -116,34 +114,23 @@ By default, Pseudorandom cTLS assumes that the TLS ciphertext is using an AEAD a
 
 ### With Streaming Transports
 
-When used over a streaming transport, Pseudorandom cTLS requires that headers have predictable lengths.  This creates the following limitations:
+When used over a streaming transport, Pseudorandom cTLS requires that headers have predictable lengths.  Therefore, if a Connection ID is negotiated, it MUST always be included.  Normally, when TLS runs on top of a streaming transport, Connection IDs are not enabled, so this is not expected to be a significant limitation.
 
-* If a Connection ID is negotiated, it MUST always be included.
-* If the Sequence Number is not suppressed in the template, it MUST always have 16-bit length.
+The transformation performed by the sender uses `TSPRP-Encipher()` and `key` from `template.pseudorandom`.  The sender first constructs any CTLSPlaintext records as follows:
 
-Normally, when TLS runs on top of a streaming transport, Connection IDs are not enabled and Sequence Numbers are omitted, so this is not expected to be a significant limitation.
-
-The transformation performed by the sender takes the following inputs:
-
-* `TSPRP-Encipher()` and `key` from `template.pseudorandom`
-* `template.profile_id` from the cTLS template
-
-The sender first constructs any CTLSPlaintext records as follows:
-
-1. Set `tweak = "client hs" + profile_id` if sent by the client, or `"server hs" + profile_id` if sent by the server.
+1. Set `tweak = "client hs"` if sent by the client, or `"server hs"` if sent by the server.
 2. Replace the message with `TSPRP-Encipher(key, tweak, message)`.
 3. Fragment the message if necessary, ensuring each fragment is at least 16 bytes long.
-4. Change the `content_type` of the final fragment to `ctls_handshake_end(TBD)`.
+4. Change the `content_type` of the final fragment to `ctls_handshake_end(TBD)` (see {{content-type}}).
 
 Note: This procedure requires that handshake messages are at least 16 bytes long.  This condition is automatically true in most configurations.
 
 The sender then constructs cTLS records as usual, but applies the following transformation before sending each record:
 
-1. Let `hdr_length` be the length of the record header (normally 3 for CTLSCiphertext or 4 for CTLSPlaintext).
-2. Let `prefix` be the first `hdr_length + 16` bytes of the record.
-3. Set `tweak = "client"` if sent by the client, or `"server"` if sent by the server.
-4. If the record is CTLSCiphertext, append the 64-bit Sequence Number to `tweak`.
-5. Replace `prefix` with `TSPRP-Encipher(key, tweak, prefix)`.
+1. Let `prefix` be the first 19 bytes of the record.
+2. Set `tweak = "client"` if sent by the client, or `"server"` if sent by the server.
+3. If the record is CTLSCiphertext, append the 64-bit Sequence Number to `tweak`.
+4. Replace `prefix` with `TSPRP-Encipher(key, tweak, prefix)`.
 
 > OPEN ISSUE: How should we actually form the tweaks?  Should we add some kind of chaining, within a stream or binding ServerHello to ClientHello?
 
@@ -155,23 +142,22 @@ Given the inputs:
 
 * `payload`, an entire datagram that may contain multiple cTLS records.
 * `TSPRP-Decipher()` and `key` from `template.pseudorandom`
-* `template.profile_id`
 * `connection_id`, the ID expected on incoming CTLSCiphertext records
 
 The recipient deciphers the datagram as follows:
 
-1. Let `max_hdr_length = max(16, len(connection_id) + 5)`.  This represents the most data that might be needed to read the DTLS Handshake header ({{Section 5.2 of !DTLS13=I-D.draft-ietf-tls-dtls13-43}}) or the CTLSCiphertext header.
+1. Let `max_hdr_length = max(15, len(connection_id) + 5)`.  This represents the most data that might be needed to read the CTLSPlaintext and DTLS Handshake headers ({{Section 5.2 of !DTLS13=I-D.draft-ietf-tls-dtls13-43}}) or the CTLSCiphertext header.
 2. Let `index = 0`.
 3. While `index != len(payload)`:
     1. Let `prefix = payload[index : min(len(payload), index + max_hdr_length + 16)]`
     2. Let `tweak = "client datagram" + len(payload) + index` if sent by the client, or `"server datagram" + len(payload) + index` if sent by the server.
     3. Replace `prefix` with `TSPRP-Decipher(key, tweak, prefix)`.
-    5. Set `index` to the end of this record.
+    4. Set `index` to the end of this record.
 
 CTLSPlaintext records are subject to an additional decipherment step:
 
 1. Perform fragment reassembly to recover the complete `Handshake.body` ({{Section 5.5 of !DTLS13}}).
-2. Let `tweak` be `"client datagram hs" + profile_id + Handshake.msg_type` if sent by the client, or `"server datagram hs" + profile_id + Handshake.msg_type` if sent by the server.
+2. Let `tweak` be `"client datagram hs" + Handshake.msg_type` if sent by the client, or `"server datagram hs" + Handshake.msg_type` if sent by the server.
 3. Replace `Handshake.body` with `TSPRP-Decipher(key, tweak, Handshake.body)`.
 
 ## Optional Keys
@@ -183,6 +169,8 @@ In some deployments, it may be necessary or valuable to authenticate that a Clie
 To require proof that the sender was using a particular Pseudorandom cTLS template, the template MAY include the optional key "start-tag" whose value is an integer `T` between 1 and 32 (inclusive).  When this key is present, the client MUST prepend `T` zero bytes to the ClientHello before calling `TSPRP-Encipher()` on the ClientHello payload, and the server SHOULD verify that these bytes are zero after calling `TSPRP-Decipher()`.  This arrangement authenticates the TSPRP {{?Encode-Then-Encipher=DOI.10.1007/3-540-44448-3_24}}.  The indicated length in the `Handshake` header is not altered, so this does not reduce the maximum handshake message size.
 
 Start tags can be used to enable rotation of the Pseudorandom cTLS key.  With a tag in place, servers can use trial decryption to identify which key (old or new) is in use for each new connection.  To avoid false matches, values of `T` less than 8 are NOT RECOMMENDED.
+
+When "start-tag" is in use, the "pseudorandom" key MAY appear in the template's "optional" section.
 
 ### "client-recipher" and "server-recipher" {#confusion-defense}
 
@@ -200,7 +188,7 @@ In general, a malicious peer can still produce desired ciphertext with probabili
 
 # Plaintext Alerts
 
-Representing plaintext alerts (i.e. CTLSPlaintext messages with `content_type = alert(TBD)`) requires additional steps, because Alert fragments have little entropy.
+Representing plaintext alerts (i.e. CTLSPlaintext messages with `content_type = alert(21)`) requires additional steps, because Alert fragments have little entropy.
 
 A standard TLS Alert fragment is always 2 bytes long.  In Pseudorandom cTLS, senders MUST prepend at least 16 random bytes to any plaintext Alert fragment.  Enciphering and deciphering then proceed identically to other CTLSPlaintext messages.  The recipient MUST remove these bytes before passing the CTLSPlaintext to the cTLS implementation.
 
@@ -230,9 +218,30 @@ cTLS templates are presumed to be published by the server operator.  In order to
 
 Pseudorandom cTLS is intended to improve privacy in scenarios where the adversary lacks access to the cTLS template.  However, if the adversary does have access to the cTLS template, and the template does not have a distinctive `profile_id`, Pseudorandom cTLS can reduce privacy, by enabling strong confirmation that a connection is indeed using that template.
 
-# IANA Considerations {#iana}
+# IANA Considerations
 
-We assume the existence of an IANA registry of Strong Tweakable Pseudorandom Permutations (TSPRPs).  However, no such registry exists at present.  This draft is blocked until someone documents and registers a suitable TSPRP algorithm.
+## TSPRP Registry
+
+We assume the existence of an IANA registry of Tweakable Strong Pseudorandom Permutations (TSPRPs).  However, no such registry exists at present.  This draft is blocked until someone documents and registers a suitable TSPRP algorithm.
+
+## cTLS Template Key registry
+
+This document requests that IANA add the following value to the "cTLS Template Keys" registry:
+
+| Key                    | JSON Type    | Reference       |
+|:======================:|:============:|:================|
+| pseudorandom           | object       | (This document) |
+
+## TLS ContentType Registry {#content-type}
+
+IANA is requested to add the following codepoint to the TLS Content Types Registry
+
+This document requests that a code point be allocated from the "TLS ContentType"
+registry.  The row to be added in the registry has the following form:
+
+| Value | Description        | DTLS-OK | Reference |
+|:=====:|:===================|:========|:==========|
+|  TBD  | ctls_handshake_end | Y       | RFCXXXX   |
 
 A suitable TSPRP algorithm for this registry might be HCTR2 {{HCTR2}}.
 
