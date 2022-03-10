@@ -1,0 +1,1792 @@
+{
+  "magic": "E!vIA5L86J2I",
+  "timestamp": "2022-03-10T01:08:14.390883+00:00",
+  "repo": "bemasc/pseudorandom-ctls",
+  "labels": [
+    {
+      "name": "bug",
+      "description": "Something isn't working",
+      "color": "d73a4a"
+    },
+    {
+      "name": "documentation",
+      "description": "Improvements or additions to documentation",
+      "color": "0075ca"
+    },
+    {
+      "name": "duplicate",
+      "description": "This issue or pull request already exists",
+      "color": "cfd3d7"
+    },
+    {
+      "name": "enhancement",
+      "description": "New feature or request",
+      "color": "a2eeef"
+    },
+    {
+      "name": "help wanted",
+      "description": "Extra attention is needed",
+      "color": "008672"
+    },
+    {
+      "name": "good first issue",
+      "description": "Good for newcomers",
+      "color": "7057ff"
+    },
+    {
+      "name": "invalid",
+      "description": "This doesn't seem right",
+      "color": "e4e669"
+    },
+    {
+      "name": "question",
+      "description": "Further information is requested",
+      "color": "d876e3"
+    },
+    {
+      "name": "wontfix",
+      "description": "This will not be worked on",
+      "color": "ffffff"
+    }
+  ],
+  "issues": [
+    {
+      "number": 14,
+      "id": "I_kwDOGKXUDM5BL6ql",
+      "title": "How to formulate protocol confusion attacks (and what we need in order to mitigate them)",
+      "url": "https://github.com/bemasc/pseudorandom-ctls/issues/14",
+      "state": "OPEN",
+      "author": "cjpatton",
+      "authorAssociation": "COLLABORATOR",
+      "assignees": [],
+      "labels": [],
+      "body": "One of our security goals is the following:\r\n\r\n> Protocol confusion attack resistance: This attack assumes a malicious server or client that can coerce its peer into sending a ciphertext that could be misinterpreted as a different protocol by a third party. This extension must enable each peer to ensure that its own output is unlikely to resemble any other protocol.\r\n\r\nOne question brought up by https://github.com/bemasc/pseudorandom-ctls/pull/11 is what features of the protocol and what properties of the primitives will be needed to achieve this. To answer this question, we'll need to more precisely formulate the security goal. There seem to be several ways to do this. Let's go through a few and see if we can pick one that makes the most sense.\r\n\r\n* **Game 1 (most conservative):** The attacker chooses the shared secret and the plaintext, and its goal is to predict the value of any one bit of the ciphertext. To formulate this, we give the attacker access to an oracle for its peer. It provides to this oracle the shared secret with which to derive the various key, the plaintext that will be encrypted, its guess of a ciphertext bit, and which bit its guess pertains to. It gets one guess, and wins if its guess is correct. We say that the scheme is secure if no reasonable attacker can do significantly better than win half the time.\r\n\r\nThis goal is conservative in the sense that it guarantees the attacker cannot reliably control *any* bit of ciphertext output by its peer. This is is definitely sufficient, but it might be hard to achieve. There are two ways we can consider relaxing it: either weaken the attack or make the attack objective more stringent. Let's consider the latter first.\r\n\r\n* **Game 2 (more stringent attack objective):** Observe that the inability to reliably influence a single bit does not necessarily imply a protocol confusion attack. In practice, the attacker would need to influence several bits of the ciphertext. For instance, if the attacker wanted to make the ciphertext look like a TLS 1.3 application-data record, the ciphertext would have to begin with a particular 3-byte string. To formulate this, modify **Game 1** so that the attacker specifies some substring of the ciphertext it wants to control, as well as its guess of the substring's value. As before, it gets one guess. This game has a parameter, call it `L`, specifying the number of bits the attacker has to guess correctly. We se say that the scheme is secure if no reasonable attacker wins with probability significantly better than `1/2^L`.\r\n\r\nNow, it shouldn't be too hard to convince ourselves that **Game 2** is strictly weaker than **Game 1**. It should therefore be easier to achieve, but there is the potential that it's *too* weak. Suppose we establish that no reasonable adversary can reliably control more than `L` bits of the ciphertext. What about `L-1`? Perhaps there is a different protocol that we didn't account for that a third-party might confuse the ciphertext stream for after parsing fewer than `L` bits.\r\n\r\nFor this reason, making the attack objective more stringent might not be the right way to go. What about weakening the attack? It may be reasonable to assume that the attacker has some control over the plaintext, but that the plaintext is somewhat unpredictable.\r\n\r\n* **Game 3 (plaintext has min-entropy):** Modify **Game 1** so that the attacker specifies a *distribution* on the plaintext, and have the oracle sample from this distribution. The attacker guesses a single bit as before, and we say the scheme is secure if no reasonable attacker wins with probability significantly better than `1/2 + 1/2^u`, where `u` is the min-entropy of the distribution. (This may not be exactly right. The basic idea is that the advantage has to account for trivial wins resulting from guessing the sampled plaintext correctly.)\r\n\r\nAgain it should be obvious that security in the sense of **Game 1** implies security in the sense of **Game 3**. However, here we have the problem that whether the plaintext has any entropy at all (from the perspective of the attacker) is going to be application dependent. For instance, web servers have browsers fetch resources they control.\r\n\r\nAnother way we might consider consider weakening the attack is by having the game choose a shared secret securely and give the attacker access to it.\r\n\r\n* **Game 4 (shared secret is chosen securely):** Modify **Game 1** so that the game chooses the shared secret at random and hands it to the attacker before the attack. The oracle now uses this shared secret instead of one chosen by the attacker.\r\n\r\nWhether this relaxation is realistic depends on how the shared secret is established. In particular, both the client and server influence the value of the shared secret via their DH key shares exchanged during the TLS handshake. If this relaxation makes achieving security significantly easier, then it's worth considering. However, I think this could end up being quite delicate.",
+      "createdAt": "2022-01-04T18:27:41Z",
+      "updatedAt": "2022-01-04T21:27:28Z",
+      "closedAt": null,
+      "comments": [
+        {
+          "author": "bemasc",
+          "authorAssociation": "OWNER",
+          "body": "I think Game 1 is basically right, and good enough.\r\n\r\nThe formal notion we're after is indeed tricky.  My version of Game 1 would look something like this:\r\n\r\n```go\r\ninterface {\r\n  // Send represents the entire TLS + Pseudorandom cTLS operation.\r\n  Send(plaintext []byte) []byte\r\n\r\n  // NaiveParser represents some pre-existing protocol.\r\n  NaiveParser(wire_data []byte) bool\r\n}\r\n``` \r\n\r\nThe game is played as follows:\r\n1. The attacker chooses a `NaiveParser()` function.\r\n2. The attacker chooses a Pseudorandom cTLS key `K`\r\n3. The TLS master secret is chosen at random\r\n4. The attacker chooses `plaintext`\r\n5. The attacker attempts to predict `NaiveParser(Send(plaintext))`\r\n6. The sender computes `NaiveParser(Send(plaintext))`\r\n7. The attacker's prediction must not be correct more often than a constant (e.g. always guess `false`).\r\n\r\nAs specified, the attacker can generally win this game.  (They choose `NaiveParser` to know `K` and decrypt the output.)  The challenge is to make `NaiveParser` actually be naive.  One way is to require it to only look at a single bit of input, resulting in Game 1.  A more general approach would be to constrain it by another game:\r\n\r\n1. Consider another party: the Referee.\r\n2. The Referee has access to two keys, `K1` and `K2`.  One of these is `K`; the other is chosen uniformly at random.  It cannot distinguish them better than chance.\r\n3. The Referee has access to `NaiveParser()` and is free to make infinitely many calls to it (e.g. trying all possible outputs of `Send()` under all values of `K`).\r\n\r\nThe attacker must choose `NaiveParser()` such that the Referee cannot distinguish `K1` and `K2`.  This is realistic: any pre-existing protocol is not going to help the Referee win this game.",
+          "createdAt": "2022-01-04T21:27:27Z",
+          "updatedAt": "2022-01-04T21:27:27Z"
+        }
+      ]
+    }
+  ],
+  "pulls": [
+    {
+      "number": 1,
+      "id": "PR_kwDOGKXUDM4thQ29",
+      "title": "Add comments and initial pass",
+      "url": "https://github.com/bemasc/pseudorandom-ctls/pull/1",
+      "state": "MERGED",
+      "author": "cjpatton",
+      "authorAssociation": "COLLABORATOR",
+      "assignees": [],
+      "labels": [],
+      "body": "I added comments in line that I intend to resolve before we merge.",
+      "createdAt": "2021-10-21T22:09:54Z",
+      "updatedAt": "2021-10-22T16:06:16Z",
+      "baseRepository": "bemasc/pseudorandom-ctls",
+      "baseRefName": "main",
+      "baseRefOid": "9b6f5a6465d085058142af1c72cc6f71205318ca",
+      "headRepository": "bemasc/pseudorandom-ctls",
+      "headRefName": "cjpatton/initial",
+      "headRefOid": "453b16f1030fa55ac285828ecb233afc2132bb05",
+      "closedAt": "2021-10-22T16:06:16Z",
+      "mergedAt": "2021-10-22T16:06:16Z",
+      "mergedBy": "bemasc",
+      "mergeCommit": {
+        "oid": "f50058ec0ddf670b596d92519367c54b6c2c4268"
+      },
+      "comments": [],
+      "reviews": [
+        {
+          "id": "PRR_kwDOGKXUDM4u3vut",
+          "commit": {
+            "abbreviatedOid": "8ffd830"
+          },
+          "author": "bemasc",
+          "authorAssociation": "OWNER",
+          "state": "COMMENTED",
+          "body": "",
+          "createdAt": "2021-10-22T02:09:12Z",
+          "updatedAt": "2021-10-22T03:00:52Z",
+          "comments": [
+            {
+              "originalPosition": 19,
+              "body": "```suggestion\r\n* Protocol confusion attack resistance: Neither party has any influence over the bytes emitted by the other party.\r\n```",
+              "createdAt": "2021-10-22T02:09:12Z",
+              "updatedAt": "2021-10-22T03:00:52Z"
+            },
+            {
+              "originalPosition": 58,
+              "body": "```suggestion\r\nThe Pseudorandom cTLS design assumes that the negotiated AEAD algorithm produces pseudorandom ciphertexts.  This is not a requirement of the AEAD specification {{!RFC5116}}, but it is true of popular AEAD families like AES-GCM and ChaChaPoly.\r\n```",
+              "createdAt": "2021-10-22T02:12:05Z",
+              "updatedAt": "2021-10-22T03:00:52Z"
+            },
+            {
+              "originalPosition": 61,
+              "body": "```suggestion\r\n```",
+              "createdAt": "2021-10-22T02:12:25Z",
+              "updatedAt": "2021-10-22T03:00:52Z"
+            },
+            {
+              "originalPosition": 67,
+              "body": "I think HelloRetryRequest is fine.  Its contents are not identical to any other message, so the STPRP guarantees unique pseudorandom output.\r\n\r\n```suggestion\r\n> TODO: Check that the assumptions hold for HelloRetryRequest.  As long as no handshake messages are repeated verbatim, it should be fine, but we need to check whether an active attacker can trigger a replay.\r\n```",
+              "createdAt": "2021-10-22T02:14:37Z",
+              "updatedAt": "2021-10-22T03:00:52Z"
+            },
+            {
+              "originalPosition": 78,
+              "body": "```suggestion\r\nNormally, when TLS runs on top of a streaming transport, Connection IDs are not enabled and Sequence Numbers are omitted, so this is not expected to be a significant limitation.\r\n```\r\n\r\nI tried to clarify.  We're talking about the not-DTLS and not-QUIC case, so why discuss them here?",
+              "createdAt": "2021-10-22T02:19:54Z",
+              "updatedAt": "2021-10-22T03:00:52Z"
+            },
+            {
+              "originalPosition": 87,
+              "body": "```suggestion\r\n* `template.profile_id` from the cTLS template\r\n```",
+              "createdAt": "2021-10-22T02:20:20Z",
+              "updatedAt": "2021-10-22T03:00:52Z"
+            },
+            {
+              "originalPosition": 96,
+              "body": "```suggestion\r\n    1. Let `prefix` be the first `hdr_length + tag_length` bytes of the record.\r\n```",
+              "createdAt": "2021-10-22T02:20:37Z",
+              "updatedAt": "2021-10-22T03:00:52Z"
+            },
+            {
+              "originalPosition": 99,
+              "body": "```suggestion\r\n    3. If the record is CTLSCiphertext, append the 64-bit Sequence Number to `tweak`.\r\n```\r\n\r\nAFAIK none of the tweaks are actually needed.  The STPRP plaintext is guaranteed to be unique, so there's no risk of duplication.  However, it seems that tweaking your cipher with all available context is best-practice in case one of your other assumptions fails.  Also, I suspect that it improves the usage bounds (e.g. avoids birthday collisions).",
+              "createdAt": "2021-10-22T02:23:27Z",
+              "updatedAt": "2021-10-22T03:00:52Z"
+            },
+            {
+              "originalPosition": 103,
+              "body": "```suggestion\r\n```\r\n\r\nYes.  I think this is pretty well-defined so maybe we don't need this.",
+              "createdAt": "2021-10-22T02:31:02Z",
+              "updatedAt": "2021-10-22T03:00:52Z"
+            },
+            {
+              "originalPosition": 123,
+              "body": "```suggestion\r\n1. Let `max_hdr_length = max(len(profile_id) + 5, len(connection_id) + 5)`.  This represents the most data that might be needed to read the type and length of either record type.\r\n```\r\n\r\nlen(profile_id) + 5 is the maximum length of the CTLSPlaintext header (with varint length field).  len(connection_id) + 5 is the maximum length of the cTLS Unified Header (flags, sequence number, and length).",
+              "createdAt": "2021-10-22T02:34:08Z",
+              "updatedAt": "2021-10-22T03:00:52Z"
+            },
+            {
+              "originalPosition": 129,
+              "body": "```suggestion\r\n    3. Replace `top` with `Inverse-STPRP(key, tweak, top)`.\r\n```\r\n\r\nNo, this is specifying the _decryption_ algorithm, as noted at the top.  The encryption algorithm has to run back-to-front, so it's harder to describe.",
+              "createdAt": "2021-10-22T02:35:23Z",
+              "updatedAt": "2021-10-22T03:00:52Z"
+            },
+            {
+              "originalPosition": 138,
+              "body": "```suggestion\r\n> TODO: Key rotation.  How does it work?  We could possibly use trial decryption, with parsing and profile-id matching as an implicit MAC.  There are at least 40 bits of collision-resistance there for a max-length `profile_id`, which is probably fine, but it feels bit soft.  Does it help if we put a \"key ID\" in the tweak?\r\n```",
+              "createdAt": "2021-10-22T02:36:03Z",
+              "updatedAt": "2021-10-22T03:00:52Z"
+            },
+            {
+              "originalPosition": 147,
+              "body": "```suggestion\r\n> TODO: More precise security properties and security proof.  The goal we're after hasn't been widely considered in the literature so far, but we might be able to use \"Protocol Indistinguishability\" (https://link.springer.com/chapter/10.1007/978-3-319-11851-2_11).\r\n```\r\n\r\nPlease feel free to add some text here if you like.",
+              "createdAt": "2021-10-22T02:37:47Z",
+              "updatedAt": "2021-10-22T03:00:52Z"
+            },
+            {
+              "originalPosition": 56,
+              "body": "```suggestion\r\n```\r\n\r\nI like the idea that the concept of an STPRP is defined without reference to the notion of \"encryption\"; it's just a pseudorandom permutation with a known inverse.  If you think it would be clearer, I'm happy to change it.  (To my eye, \"-Encipher\" and \"-Decipher\" are also more visually confusable.)",
+              "createdAt": "2021-10-22T02:43:12Z",
+              "updatedAt": "2021-10-22T03:00:52Z"
+            },
+            {
+              "originalPosition": 10,
+              "body": "```suggestion\r\nOne interesting consequence of conventional wire formats (i.e. not pseudorandom) is the risk of protocol confusion attacks.  For example, in the NAT Slipstreaming attacks {{SLIPSTREAM}}, a web server causes a browser to send HTTP data that can be confused for another protocol (e.g. SIP) that is processed by a firewall.  Because firewalls are typically focused on attacks arriving from outside the network, malicious payloads sent from a trusted client can trick some firewalls into disabling their own protections.\r\n```",
+              "createdAt": "2021-10-22T02:46:34Z",
+              "updatedAt": "2021-10-22T15:51:37Z"
+            },
+            {
+              "originalPosition": 39,
+              "body": "```suggestion\r\n> TODO: Consider having two keys, one for sending data from client to server and another for sending data from server to client, to align better with the TLS key schedule.  These could be specified explicitly or generated from a single secret by a KDF.\r\n```",
+              "createdAt": "2021-10-22T02:49:41Z",
+              "updatedAt": "2021-10-22T03:00:52Z"
+            },
+            {
+              "originalPosition": 69,
+              "body": "```suggestion\r\nPseudorandom cTLS also enciphers every record header.  In addition to the header, a portion of the AEAD ciphertext itself is enciphered to ensure the input has enough entropy.  As many AEAD ciphertext bytes are borrowed as the AEAD's ciphertext expansion (i.e. its tag length).\r\n```\r\n\r\nThanks.  I meant that the ciphertext expansion bounds the authentication strength (no expansion -> no authentication), so our pseudorandomness is >= the authentication strength, but this is probably clearer.",
+              "createdAt": "2021-10-22T02:51:59Z",
+              "updatedAt": "2021-10-22T03:00:52Z"
+            },
+            {
+              "originalPosition": 100,
+              "body": "```suggestion\r\n    4. Replace `prefix` with `STPRP(key, tweak, prefix)`.\r\n```",
+              "createdAt": "2021-10-22T02:54:37Z",
+              "updatedAt": "2021-10-22T03:00:52Z"
+            },
+            {
+              "originalPosition": 114,
+              "body": "```suggestion\r\n> OPEN ISSUE: How should we actually form the tweaks?  Can we assume arbitrary length?  Should we add some kind of chaining, within a stream or binding ServerHello to ClientHello?\r\n\r\n```",
+              "createdAt": "2021-10-22T02:56:05Z",
+              "updatedAt": "2021-10-22T03:00:52Z"
+            }
+          ]
+        },
+        {
+          "id": "PRR_kwDOGKXUDM4u52hR",
+          "commit": {
+            "abbreviatedOid": "8ffd830"
+          },
+          "author": "cjpatton",
+          "authorAssociation": "COLLABORATOR",
+          "state": "COMMENTED",
+          "body": "A couple comments outstanding.",
+          "createdAt": "2021-10-22T14:24:46Z",
+          "updatedAt": "2021-10-22T14:51:14Z",
+          "comments": [
+            {
+              "originalPosition": 56,
+              "body": "Well, I'm actually trying to make a distinction between \"enciphering\" something and what we usually call \"encryption\". \r\nThe distinction was first made in this paper: https://www.cs.ucdavis.edu/~rogaway/papers/encode.pdf. Basically, encryption is an operation we do to protect the confidentiality of plaintexts, and an \"enciphering scheme\" is sometimes a building a block of an encryption scheme (as it is here).\r\n\r\nMaybe this is going to confuse readers?",
+              "createdAt": "2021-10-22T14:24:46Z",
+              "updatedAt": "2021-10-22T14:51:15Z"
+            },
+            {
+              "originalPosition": 58,
+              "body": "Done, but I'll call the latter ChaCha20-Poly1305.",
+              "createdAt": "2021-10-22T14:26:02Z",
+              "updatedAt": "2021-10-22T14:51:14Z"
+            },
+            {
+              "originalPosition": 67,
+              "body": "I like this resolution. I'm not sure HRR is guaranteed to have non-repeated contents across handshakes. (This might be a good reason to add entropy from the ClientHello, as you suggested below!)",
+              "createdAt": "2021-10-22T14:27:23Z",
+              "updatedAt": "2021-10-22T14:51:14Z"
+            },
+            {
+              "originalPosition": 78,
+              "body": "Ugh, you're right!",
+              "createdAt": "2021-10-22T14:28:24Z",
+              "updatedAt": "2021-10-22T14:51:14Z"
+            },
+            {
+              "originalPosition": 99,
+              "body": "Yup, that matches my understanding of things.",
+              "createdAt": "2021-10-22T14:29:30Z",
+              "updatedAt": "2021-10-22T14:51:14Z"
+            },
+            {
+              "originalPosition": 123,
+              "body": "Ack.",
+              "createdAt": "2021-10-22T14:30:29Z",
+              "updatedAt": "2021-10-22T14:51:14Z"
+            },
+            {
+              "originalPosition": 129,
+              "body": "Oh, I see, thanks for clarifying. Done.",
+              "createdAt": "2021-10-22T14:32:22Z",
+              "updatedAt": "2021-10-22T14:51:15Z"
+            },
+            {
+              "originalPosition": 10,
+              "body": "Hmm. How about replacing \"protocols with a nontrivial wire image\" with \"conventional wire formats\"? ",
+              "createdAt": "2021-10-22T14:34:39Z",
+              "updatedAt": "2021-10-22T14:51:15Z"
+            },
+            {
+              "originalPosition": 96,
+              "body": "Done.",
+              "createdAt": "2021-10-22T14:39:13Z",
+              "updatedAt": "2021-10-22T14:51:14Z"
+            },
+            {
+              "originalPosition": 100,
+              "body": "Done.",
+              "createdAt": "2021-10-22T14:39:21Z",
+              "updatedAt": "2021-10-22T14:51:15Z"
+            },
+            {
+              "originalPosition": 147,
+              "body": "Done.",
+              "createdAt": "2021-10-22T14:50:50Z",
+              "updatedAt": "2021-10-22T14:51:15Z"
+            }
+          ]
+        },
+        {
+          "id": "PRR_kwDOGKXUDM4u6PTG",
+          "commit": {
+            "abbreviatedOid": "91d11d7"
+          },
+          "author": "bemasc",
+          "authorAssociation": "OWNER",
+          "state": "COMMENTED",
+          "body": "",
+          "createdAt": "2021-10-22T15:51:51Z",
+          "updatedAt": "2021-10-22T15:51:51Z",
+          "comments": [
+            {
+              "originalPosition": 10,
+              "body": "Done",
+              "createdAt": "2021-10-22T15:51:51Z",
+              "updatedAt": "2021-10-22T15:51:51Z"
+            }
+          ]
+        },
+        {
+          "id": "PRR_kwDOGKXUDM4u6Rx-",
+          "commit": {
+            "abbreviatedOid": "1773577"
+          },
+          "author": "bemasc",
+          "authorAssociation": "OWNER",
+          "state": "COMMENTED",
+          "body": "",
+          "createdAt": "2021-10-22T16:01:50Z",
+          "updatedAt": "2021-10-22T16:02:34Z",
+          "comments": [
+            {
+              "originalPosition": 46,
+              "body": "```suggestion\r\n```\r\n\r\nOK, we can remove this.",
+              "createdAt": "2021-10-22T16:01:50Z",
+              "updatedAt": "2021-10-22T16:02:34Z"
+            },
+            {
+              "originalPosition": 56,
+              "body": "I'm fine with this change, but let's do it in a followup PR.",
+              "createdAt": "2021-10-22T16:02:14Z",
+              "updatedAt": "2021-10-22T16:02:34Z"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "id": "PR_kwDOGKXUDM4tjtug",
+      "title": "Update reference for security definition",
+      "url": "https://github.com/bemasc/pseudorandom-ctls/pull/2",
+      "state": "MERGED",
+      "author": "cjpatton",
+      "authorAssociation": "COLLABORATOR",
+      "assignees": [],
+      "labels": [],
+      "body": "Thanks to @jhoyla for the reference.",
+      "createdAt": "2021-10-22T16:13:52Z",
+      "updatedAt": "2021-10-22T16:20:40Z",
+      "baseRepository": "bemasc/pseudorandom-ctls",
+      "baseRefName": "main",
+      "baseRefOid": "f50058ec0ddf670b596d92519367c54b6c2c4268",
+      "headRepository": "bemasc/pseudorandom-ctls",
+      "headRefName": "cjpatton/security-ref",
+      "headRefOid": "5f105948afdfcb45288b22ca8c9e7bcdc1362cda",
+      "closedAt": "2021-10-22T16:20:40Z",
+      "mergedAt": "2021-10-22T16:20:40Z",
+      "mergedBy": "bemasc",
+      "mergeCommit": {
+        "oid": "22d42d93a6879d31fcb8ea16460d593380f9f39e"
+      },
+      "comments": [],
+      "reviews": [
+        {
+          "id": "PRR_kwDOGKXUDM4u6WJZ",
+          "commit": {
+            "abbreviatedOid": "5f10594"
+          },
+          "author": "bemasc",
+          "authorAssociation": "OWNER",
+          "state": "APPROVED",
+          "body": "",
+          "createdAt": "2021-10-22T16:20:32Z",
+          "updatedAt": "2021-10-22T16:20:32Z",
+          "comments": []
+        }
+      ]
+    },
+    {
+      "number": 3,
+      "id": "PR_kwDOGKXUDM4tjt_F",
+      "title": "nit: Harmonize auth comments with conventions of the doc",
+      "url": "https://github.com/bemasc/pseudorandom-ctls/pull/3",
+      "state": "CLOSED",
+      "author": "cjpatton",
+      "authorAssociation": "COLLABORATOR",
+      "assignees": [],
+      "labels": [],
+      "body": "",
+      "createdAt": "2021-10-22T16:15:20Z",
+      "updatedAt": "2021-10-22T16:18:56Z",
+      "baseRepository": "bemasc/pseudorandom-ctls",
+      "baseRefName": "main",
+      "baseRefOid": "f50058ec0ddf670b596d92519367c54b6c2c4268",
+      "headRepository": "bemasc/pseudorandom-ctls",
+      "headRefName": "cjpatton/editorial",
+      "headRefOid": "bda39430975982dd0525b25b2b22185ccd7ec74a",
+      "closedAt": "2021-10-22T16:18:56Z",
+      "mergedAt": null,
+      "mergedBy": null,
+      "mergeCommit": null,
+      "comments": [
+        {
+          "author": "bemasc",
+          "authorAssociation": "OWNER",
+          "body": "It looks like the parser isn't happy with you.  How about we just do #4 instead?",
+          "createdAt": "2021-10-22T16:18:14Z",
+          "updatedAt": "2021-10-22T16:18:14Z"
+        }
+      ],
+      "reviews": []
+    },
+    {
+      "number": 4,
+      "id": "PR_kwDOGKXUDM4tjuXH",
+      "title": "Use the abstract syntax \"STPRP-Encipher(...)\"",
+      "url": "https://github.com/bemasc/pseudorandom-ctls/pull/4",
+      "state": "MERGED",
+      "author": "bemasc",
+      "authorAssociation": "OWNER",
+      "assignees": [],
+      "labels": [],
+      "body": "",
+      "createdAt": "2021-10-22T16:17:39Z",
+      "updatedAt": "2021-10-22T16:20:58Z",
+      "baseRepository": "bemasc/pseudorandom-ctls",
+      "baseRefName": "main",
+      "baseRefOid": "f50058ec0ddf670b596d92519367c54b6c2c4268",
+      "headRepository": "bemasc/pseudorandom-ctls",
+      "headRefName": "encipher-decipher",
+      "headRefOid": "46d09dac1472d05a28b53e0f0cfd826028575846",
+      "closedAt": "2021-10-22T16:20:53Z",
+      "mergedAt": "2021-10-22T16:20:53Z",
+      "mergedBy": "bemasc",
+      "mergeCommit": {
+        "oid": "4904550530039d00ca58e8c2d0018ac68b695b0c"
+      },
+      "comments": [],
+      "reviews": [
+        {
+          "id": "PRR_kwDOGKXUDM4u6V_X",
+          "commit": {
+            "abbreviatedOid": "46d09da"
+          },
+          "author": "cjpatton",
+          "authorAssociation": "COLLABORATOR",
+          "state": "APPROVED",
+          "body": "LGTM, I just hope the distinction between \"enciphering\" and \"encrypting\" isn't confusing to people. If it is, we know who to blame :)\r\n\r\n(me)",
+          "createdAt": "2021-10-22T16:19:51Z",
+          "updatedAt": "2021-10-22T16:19:51Z",
+          "comments": []
+        }
+      ]
+    },
+    {
+      "number": 5,
+      "id": "PR_kwDOGKXUDM4tj3Iv",
+      "title": "Explain how to encode plaintext alerts",
+      "url": "https://github.com/bemasc/pseudorandom-ctls/pull/5",
+      "state": "MERGED",
+      "author": "bemasc",
+      "authorAssociation": "OWNER",
+      "assignees": [],
+      "labels": [],
+      "body": "",
+      "createdAt": "2021-10-22T17:07:34Z",
+      "updatedAt": "2021-10-22T18:41:30Z",
+      "baseRepository": "bemasc/pseudorandom-ctls",
+      "baseRefName": "main",
+      "baseRefOid": "4904550530039d00ca58e8c2d0018ac68b695b0c",
+      "headRepository": "bemasc/pseudorandom-ctls",
+      "headRefName": "alerts",
+      "headRefOid": "42e4f5626e9d5a41e455ad53af88de1a56f8f867",
+      "closedAt": "2021-10-22T18:41:27Z",
+      "mergedAt": "2021-10-22T18:41:27Z",
+      "mergedBy": "bemasc",
+      "mergeCommit": {
+        "oid": "d89373dd3fdd33512b6f343522a2b04efbc8699a"
+      },
+      "comments": [],
+      "reviews": [
+        {
+          "id": "PRR_kwDOGKXUDM4u6hbc",
+          "commit": {
+            "abbreviatedOid": "75a52ad"
+          },
+          "author": "cjpatton",
+          "authorAssociation": "COLLABORATOR",
+          "state": "COMMENTED",
+          "body": "",
+          "createdAt": "2021-10-22T17:13:07Z",
+          "updatedAt": "2021-10-22T17:18:50Z",
+          "comments": [
+            {
+              "originalPosition": 5,
+              "body": "This looks like bitwise AND\r\n```suggestion\r\n    4. If `prefix[0] && 0xe0 != 0x20` (i.e. message is not CTLSCipherText):\r\n```",
+              "createdAt": "2021-10-22T17:13:07Z",
+              "updatedAt": "2021-10-22T17:18:50Z"
+            },
+            {
+              "originalPosition": 16,
+              "body": "IIUC this isn't permitted by RFC8446, which requires to be padding to be zeros. (Maybe it's permitted by cTLS?)\r\n\r\nIf the server is going to send an alert after ClientHello but before EncryptedExtensions, we could borrow some entropy from ClientHello.random, as you suggested elsewhere. Maybe append the first 16 bytes to the tweak?",
+              "createdAt": "2021-10-22T17:16:54Z",
+              "updatedAt": "2021-10-22T17:18:50Z"
+            },
+            {
+              "originalPosition": 20,
+              "body": "There's a pretty small window to consider here, since it could only be issued before or after the ClientHello. I'm not sure if RFC8446 explicitly disallows an alert here, but I also can't imagine a circumstance in which it would be used.",
+              "createdAt": "2021-10-22T17:18:47Z",
+              "updatedAt": "2021-10-22T17:18:50Z"
+            }
+          ]
+        },
+        {
+          "id": "PRR_kwDOGKXUDM4u6wtu",
+          "commit": {
+            "abbreviatedOid": "42e4f56"
+          },
+          "author": "bemasc",
+          "authorAssociation": "OWNER",
+          "state": "COMMENTED",
+          "body": "",
+          "createdAt": "2021-10-22T18:28:09Z",
+          "updatedAt": "2021-10-22T18:29:14Z",
+          "comments": [
+            {
+              "originalPosition": 5,
+              "body": "Yes, I mean bitwise and.",
+              "createdAt": "2021-10-22T18:28:12Z",
+              "updatedAt": "2021-10-22T18:29:14Z"
+            },
+            {
+              "originalPosition": 16,
+              "body": "This is happening in the pseudorandom layer, between cTLS and the transport, not using any TLS 1.3 functionality.  For clarity, I've removed any use of the word \"padding\" here.",
+              "createdAt": "2021-10-22T18:28:57Z",
+              "updatedAt": "2021-10-22T18:29:14Z"
+            },
+            {
+              "originalPosition": 20,
+              "body": "OK, I've changed this to a question.",
+              "createdAt": "2021-10-22T18:29:11Z",
+              "updatedAt": "2021-10-22T18:29:14Z"
+            }
+          ]
+        },
+        {
+          "id": "PRR_kwDOGKXUDM4u6xyN",
+          "commit": {
+            "abbreviatedOid": "42e4f56"
+          },
+          "author": "cjpatton",
+          "authorAssociation": "COLLABORATOR",
+          "state": "COMMENTED",
+          "body": "",
+          "createdAt": "2021-10-22T18:33:24Z",
+          "updatedAt": "2021-10-22T18:33:25Z",
+          "comments": [
+            {
+              "originalPosition": 16,
+              "body": "Good point! The downside I guess is that we're expanding the message size a bit, but I think it's tolerable when not on the happy path.",
+              "createdAt": "2021-10-22T18:33:25Z",
+              "updatedAt": "2021-10-22T18:33:25Z"
+            }
+          ]
+        },
+        {
+          "id": "PRR_kwDOGKXUDM4u6yCR",
+          "commit": {
+            "abbreviatedOid": "42e4f56"
+          },
+          "author": "cjpatton",
+          "authorAssociation": "COLLABORATOR",
+          "state": "APPROVED",
+          "body": "",
+          "createdAt": "2021-10-22T18:34:49Z",
+          "updatedAt": "2021-10-22T18:34:49Z",
+          "comments": []
+        }
+      ]
+    },
+    {
+      "number": 6,
+      "id": "PR_kwDOGKXUDM4tkPj1",
+      "title": "Update Chris' org",
+      "url": "https://github.com/bemasc/pseudorandom-ctls/pull/6",
+      "state": "MERGED",
+      "author": "cjpatton",
+      "authorAssociation": "COLLABORATOR",
+      "assignees": [],
+      "labels": [],
+      "body": "",
+      "createdAt": "2021-10-22T20:02:48Z",
+      "updatedAt": "2021-10-25T14:28:56Z",
+      "baseRepository": "bemasc/pseudorandom-ctls",
+      "baseRefName": "main",
+      "baseRefOid": "d89373dd3fdd33512b6f343522a2b04efbc8699a",
+      "headRepository": "bemasc/pseudorandom-ctls",
+      "headRefName": "cjpatton/org",
+      "headRefOid": "48f8ac455f906e54bcb86a7938ce42509c912a10",
+      "closedAt": "2021-10-25T14:28:56Z",
+      "mergedAt": "2021-10-25T14:28:56Z",
+      "mergedBy": "bemasc",
+      "mergeCommit": {
+        "oid": "7417435ac5ff8525b9703789c90fd9a39155fe73"
+      },
+      "comments": [],
+      "reviews": []
+    },
+    {
+      "number": 7,
+      "id": "PR_kwDOGKXUDM4tlv_7",
+      "title": "Avoid relying on the \"minimum tag length\"",
+      "url": "https://github.com/bemasc/pseudorandom-ctls/pull/7",
+      "state": "MERGED",
+      "author": "bemasc",
+      "authorAssociation": "OWNER",
+      "assignees": [],
+      "labels": [],
+      "body": "Client and server need to agree on the \"minimum tag length\" of any\r\nsupported AEAD algorithm, but client and server might implement\r\ndifferent sets of AEAD algorithms, resulting in different minimum\r\nvalues.\r\n\r\nPin the length at 16 (which it will always be in practice) instead.",
+      "createdAt": "2021-10-24T13:09:36Z",
+      "updatedAt": "2021-10-25T15:01:23Z",
+      "baseRepository": "bemasc/pseudorandom-ctls",
+      "baseRefName": "main",
+      "baseRefOid": "d89373dd3fdd33512b6f343522a2b04efbc8699a",
+      "headRepository": "bemasc/pseudorandom-ctls",
+      "headRefName": "bemasc-16",
+      "headRefOid": "c771679ccf61b19eb1f599eb646a4e1baa62506a",
+      "closedAt": "2021-10-25T15:01:23Z",
+      "mergedAt": "2021-10-25T15:01:23Z",
+      "mergedBy": "bemasc",
+      "mergeCommit": {
+        "oid": "3ed982a02a15d1b78b51e0e0666f7c0f5bfb5557"
+      },
+      "comments": [],
+      "reviews": [
+        {
+          "id": "PRR_kwDOGKXUDM4u-zXl",
+          "commit": {
+            "abbreviatedOid": "c771679"
+          },
+          "author": "cjpatton",
+          "authorAssociation": "COLLABORATOR",
+          "state": "APPROVED",
+          "body": "Good idea.",
+          "createdAt": "2021-10-25T14:37:00Z",
+          "updatedAt": "2021-10-25T14:37:00Z",
+          "comments": []
+        }
+      ]
+    },
+    {
+      "number": 8,
+      "id": "PR_kwDOGKXUDM4toZ2S",
+      "title": "Adjust lengths to match cTLS-04",
+      "url": "https://github.com/bemasc/pseudorandom-ctls/pull/8",
+      "state": "MERGED",
+      "author": "bemasc",
+      "authorAssociation": "OWNER",
+      "assignees": [],
+      "labels": [],
+      "body": "cTLS-04 made `profile_id` a single byte, and got rid of varint encoding (although this appears to have resulted in some confusion about how the `fragment` field is represented).",
+      "createdAt": "2021-10-25T15:03:47Z",
+      "updatedAt": "2021-11-12T20:01:56Z",
+      "baseRepository": "bemasc/pseudorandom-ctls",
+      "baseRefName": "main",
+      "baseRefOid": "3ed982a02a15d1b78b51e0e0666f7c0f5bfb5557",
+      "headRepository": "bemasc/pseudorandom-ctls",
+      "headRefName": "bemasc-lengths",
+      "headRefOid": "3b1edf44ad731279942a38e9a2955b6c92512d16",
+      "closedAt": "2021-11-12T20:01:52Z",
+      "mergedAt": "2021-11-12T20:01:52Z",
+      "mergedBy": "bemasc",
+      "mergeCommit": {
+        "oid": "61c7ad4e7065ea67a361943d59edc00c40f375e8"
+      },
+      "comments": [],
+      "reviews": [
+        {
+          "id": "PRR_kwDOGKXUDM4u_ZJ3",
+          "commit": {
+            "abbreviatedOid": "23886fe"
+          },
+          "author": "cjpatton",
+          "authorAssociation": "COLLABORATOR",
+          "state": "COMMENTED",
+          "body": "",
+          "createdAt": "2021-10-25T16:43:14Z",
+          "updatedAt": "2021-10-25T16:43:52Z",
+          "comments": [
+            {
+              "originalPosition": 43,
+              "body": "Is the question here (whether a handshake message can be fragmented across multiple records? If the RFC8446 record layer rules apply, then I believe the answer is \"yes\". To put a finer point on this: I believe it's possible that the ClientHello is split across multiple records, in which case some enciphered record may not contain enough entropy to achieve the property we want. (See https://datatracker.ietf.org/doc/html/rfc8446#section-5.1.)\r\n\r\nSo I think you're right: we want to encipher at least the entire message. Fortunately, RFC8446 requires handshake records corresponding to the same handshake message to be contiguous in the stream of records. Of course this does mean that the encoding doesn't apply individual records, but a sequence of records.",
+              "createdAt": "2021-10-25T16:43:14Z",
+              "updatedAt": "2021-10-25T16:43:52Z"
+            }
+          ]
+        },
+        {
+          "id": "PRR_kwDOGKXUDM4u_v_X",
+          "commit": {
+            "abbreviatedOid": "e65b407"
+          },
+          "author": "bemasc",
+          "authorAssociation": "OWNER",
+          "state": "COMMENTED",
+          "body": "",
+          "createdAt": "2021-10-25T18:18:33Z",
+          "updatedAt": "2021-10-25T18:18:33Z",
+          "comments": [
+            {
+              "originalPosition": 43,
+              "body": "OK, I've reworked the algorithms to try to account for fragmentation.",
+              "createdAt": "2021-10-25T18:18:33Z",
+              "updatedAt": "2021-10-25T18:18:33Z"
+            }
+          ]
+        },
+        {
+          "id": "PRR_kwDOGKXUDM4vF4dK",
+          "commit": {
+            "abbreviatedOid": "17d92c6"
+          },
+          "author": "cjpatton",
+          "authorAssociation": "COLLABORATOR",
+          "state": "COMMENTED",
+          "body": "",
+          "createdAt": "2021-10-27T01:48:13Z",
+          "updatedAt": "2021-10-27T01:48:18Z",
+          "comments": [
+            {
+              "originalPosition": 39,
+              "body": "I think this accomplishes the goal, but I think the ideal way to spell it is as a layer of logic that is applied after generating records in the usual way but before writing them to the socket. In other words, ideally we could say: \"The client (resp. server) constructs the sequence of records as usual. Before writing the records to the wire, they are transformed using the following algorithm: ...\"\r\n\r\nThen the algorithm would apply two transformations:\r\n1. First, for each contiguous sequence of CTLSPlaintext records, concatenate the sequence of fragments in the order in which they appear into a `message`. Next, partition `STPRP-Encipher(key, tweak, message)` into fragments and replace the plaintext fragments with the enciphered fragments.\r\n2. Second, transform each record header as you already describe.\r\n\r\nThe first transformation is perhaps more generally than we need, but the upside is that it's fairly easy to describe. I also don't think it's necessary to introduce a new content type to denote the final fragment, since the transformation applies to contiguous sequence of plaintext records.\r\n",
+              "createdAt": "2021-10-27T01:48:14Z",
+              "updatedAt": "2021-10-27T01:48:18Z"
+            }
+          ]
+        },
+        {
+          "id": "PRR_kwDOGKXUDM4vIKmJ",
+          "commit": {
+            "abbreviatedOid": "17d92c6"
+          },
+          "author": "bemasc",
+          "authorAssociation": "OWNER",
+          "state": "COMMENTED",
+          "body": "",
+          "createdAt": "2021-10-27T13:49:37Z",
+          "updatedAt": "2021-10-27T13:49:38Z",
+          "comments": [
+            {
+              "originalPosition": 39,
+              "body": "I'm not convinced that TLS/cTLS has any concept of \"contiguous sequence of CTLSPlaintext records\".  For example, a TLS library might hand back individual records to a callback, one at a time, without any indication of whether two records are for the same message.  Conversely, a TLS library might return a \"flight\" of records that actually contain multiple distinct messages.\r\n\r\nMore concretely, I'm pretty sure we need the final-fragment indicator, because the recipient has no way to know where the \"contiguous sequence\" ends.  Without this flag, the only way to decipher a plaintext record would be to keep accumulating fragments and re-applying STPRP-Decipher() to the concatenation until the output is a valid message.  This is O(N^2) in the number of fragments, and isn't strictly guaranteed to be free of false positives.\r\n\r\nNotably, DTLS doesn't have this problem, because it actually provides a header for this purpose, but TLS/TCP relies on the plaintext messages being self-delimiting.",
+              "createdAt": "2021-10-27T13:49:37Z",
+              "updatedAt": "2021-10-27T13:49:38Z"
+            }
+          ]
+        },
+        {
+          "id": "PRR_kwDOGKXUDM4vPS3g",
+          "commit": {
+            "abbreviatedOid": "17d92c6"
+          },
+          "author": "cjpatton",
+          "authorAssociation": "COLLABORATOR",
+          "state": "APPROVED",
+          "body": "LGTM. The one downside I see is that the encoding isn't completely agnostic to the size of handshake record fragments. There should be an alternative that is (or at least makes weaker assumptions), though it would be more complicated. I think we should opt to keep things simple for now. (Plus, as a practical matter, it seems super unlikely that handshake record fragments would be smaller than 16 bytes!)\r\n",
+          "createdAt": "2021-10-29T00:49:12Z",
+          "updatedAt": "2021-10-29T01:01:24Z",
+          "comments": [
+            {
+              "originalPosition": 39,
+              "body": "> I'm not convinced that TLS/cTLS has any concept of \"contiguous sequence of CTLSPlaintext records\". For example, a TLS library might hand back individual records to a callback, one at a time, without any indication of whether two records are for the same message. Conversely, a TLS library might return a \"flight\" of records that actually contain multiple distinct messages.\r\n\r\nHmm, yeah both of those seem plausible. My understanding comes from the following from Section 5.1 of the 1.3 spec:\r\n>    -  Handshake messages MUST NOT be interleaved with other record\r\n>       types.  That is, if a handshake message is split over two or more\r\n>       records, there MUST NOT be any other records between them.\r\n\r\nFrom this statement I infer that the records that the records pertaining to the ClientHello must be contiguous. Two things are possible, however. First, TLS implementations might ignore this \"MUST NOT\". Second, cTLS picks different record layer rules that makes this point irrelevant.\r\n\r\n\r\n> More concretely, I'm pretty sure we need the final-fragment indicator, because the recipient has no way to know where the \"contiguous sequence\" ends.\r\n\r\nOk, I see the problem. Let's focus on the client's first flight. This flight of records contains just one handshake message, the ClientHello. Assuming it's true that handshake records aren't interleaved with records of other types, it follows that there is just one sequence of handshake records in the first, and it's contiguous. My (incorrect) idea is that to decipher the message, the server first deciphers each of the record header, starting with the first handshake record in the sequence and ending with the first non-handshake record. Before processing the next record, it assembles the fragments and deciphers the handshake message. The problem is that the non-handshake record never shows up, since a handshake record was, in all likelihood, the last record the client sent.\r\n\r\nYour solution is the right way to go.\r\n",
+              "createdAt": "2021-10-29T00:49:12Z",
+              "updatedAt": "2021-10-29T01:01:24Z"
+            },
+            {
+              "originalPosition": 41,
+              "body": "nit: The procedure doesn't \"assume\" this, since step 3 requires it.",
+              "createdAt": "2021-10-29T00:53:33Z",
+              "updatedAt": "2021-10-29T01:01:24Z"
+            },
+            {
+              "originalPosition": 38,
+              "body": "```suggestion\r\n3. Fragment the message if necessary, ensuring each fragment is at least 16 bytes long.\r\n```",
+              "createdAt": "2021-10-29T00:55:53Z",
+              "updatedAt": "2021-10-29T01:01:24Z"
+            }
+          ]
+        },
+        {
+          "id": "PRR_kwDOGKXUDM4v_hD8",
+          "commit": {
+            "abbreviatedOid": "17d92c6"
+          },
+          "author": "bemasc",
+          "authorAssociation": "OWNER",
+          "state": "COMMENTED",
+          "body": "",
+          "createdAt": "2021-11-12T19:57:37Z",
+          "updatedAt": "2021-11-12T19:57:37Z",
+          "comments": [
+            {
+              "originalPosition": 41,
+              "body": "OK, changed to \"requires\"",
+              "createdAt": "2021-11-12T19:57:37Z",
+              "updatedAt": "2021-11-12T19:57:37Z"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "number": 9,
+      "id": "PR_kwDOGKXUDM4uezLa",
+      "title": "Fix defenses against NAT slipstream attacks",
+      "url": "https://github.com/bemasc/pseudorandom-ctls/pull/9",
+      "state": "CLOSED",
+      "author": "bemasc",
+      "authorAssociation": "OWNER",
+      "assignees": [],
+      "labels": [],
+      "body": "This change also lays out a specific cipher suite that I think might\r\nwork.",
+      "createdAt": "2021-11-13T03:36:41Z",
+      "updatedAt": "2022-01-04T16:58:06Z",
+      "baseRepository": "bemasc/pseudorandom-ctls",
+      "baseRefName": "main",
+      "baseRefOid": "61c7ad4e7065ea67a361943d59edc00c40f375e8",
+      "headRepository": "bemasc/pseudorandom-ctls",
+      "headRefName": "bemasc-slipstream",
+      "headRefOid": "791cb75f0120f8a3376693c94b7f936da0367113",
+      "closedAt": "2022-01-04T16:58:06Z",
+      "mergedAt": null,
+      "mergedBy": null,
+      "mergeCommit": null,
+      "comments": [
+        {
+          "author": "bemasc",
+          "authorAssociation": "OWNER",
+          "body": "Actually I think #10 is a better solution.",
+          "createdAt": "2021-11-16T18:16:35Z",
+          "updatedAt": "2021-11-16T18:16:35Z"
+        },
+        {
+          "author": "bemasc",
+          "authorAssociation": "OWNER",
+          "body": "Closed in favor of #11 ",
+          "createdAt": "2022-01-04T16:58:06Z",
+          "updatedAt": "2022-01-04T16:58:06Z"
+        }
+      ],
+      "reviews": [
+        {
+          "id": "PRR_kwDOGKXUDM4wAx1H",
+          "commit": {
+            "abbreviatedOid": "791cb75"
+          },
+          "author": "bemasc",
+          "authorAssociation": "OWNER",
+          "state": "COMMENTED",
+          "body": "",
+          "createdAt": "2021-11-14T20:05:52Z",
+          "updatedAt": "2021-11-14T20:05:52Z",
+          "comments": [
+            {
+              "originalPosition": 86,
+              "body": "Another possibility that I think would work would be\r\n~~~python\r\nif len(input) <= 32: return input\r\nhash = SHA256(input[:-32])\r\ntwisted = input[:-32] + XOR(input[-32:], hash)\r\n~~~\r\n\r\nThat introduces two cases, which complicates the analysis, but it might be still be easier to analyze than truncating the hash.",
+              "createdAt": "2021-11-14T20:05:52Z",
+              "updatedAt": "2021-11-14T20:05:52Z"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "number": 10,
+      "id": "PR_kwDOGKXUDM4um4cg",
+      "title": "Define new pseudorandom AEAD ciphersuites",
+      "url": "https://github.com/bemasc/pseudorandom-ctls/pull/10",
+      "state": "CLOSED",
+      "author": "bemasc",
+      "authorAssociation": "OWNER",
+      "assignees": [],
+      "labels": [],
+      "body": "These ciphersuites provide computational defense against structured\r\nciphertext, at a relatively modest computational cost.  This arrangement\r\nmakes the cost of the defense optional, so implementations can stick to\r\nAES-GCM if it ciphertext confusion attacks aren't relevant.",
+      "createdAt": "2021-11-16T18:15:08Z",
+      "updatedAt": "2022-01-04T16:58:24Z",
+      "baseRepository": "bemasc/pseudorandom-ctls",
+      "baseRefName": "main",
+      "baseRefOid": "61c7ad4e7065ea67a361943d59edc00c40f375e8",
+      "headRepository": "bemasc/pseudorandom-ctls",
+      "headRefName": "bemasc-new-suite",
+      "headRefOid": "d2609544916a5ed40bbb7494d78a6c96b5a579e6",
+      "closedAt": "2022-01-04T16:58:24Z",
+      "mergedAt": null,
+      "mergedBy": null,
+      "mergeCommit": null,
+      "comments": [
+        {
+          "author": "bemasc",
+          "authorAssociation": "OWNER",
+          "body": "@cjpatton I think the big question here is: how much do we care about maintaining zero overhead?  This all gets a lot simpler if we're willing to add an 8 byte random seed to every message.",
+          "createdAt": "2021-11-16T20:00:13Z",
+          "updatedAt": "2021-11-16T20:00:13Z"
+        },
+        {
+          "author": "bemasc",
+          "authorAssociation": "OWNER",
+          "body": "> The new AEAD scheme may suffice for protocol confusion attacks, but I worry about its suitability for TLS. In particular, the MAC-then-Encrypt paradigm is not generically secure against chosen ciphertext attacks. I'm curious where this construction came from?\r\n\r\nI made it up, but it's just SIV with a slow MAC.\r\n\r\n> We'll need an AEAD scheme that has two properties: (1) It is IND-CCA secure (as required for TLS); and (2) It is \"safe\" to model as an ideal cipher (for some definition of \"safe\").\r\n\r\nFWIW, I do believe it has both properties.\r\n\r\n> For (2) you take [[ABM13](https://www.readcube.com/articles/10.1007%2F978-3-662-43933-3_18)] as the starting point. Quickly skimming this paper, my sense is that this is more about the design of a blockcipher that you want to model as an ideal cipher. Our problem is closer to the notion of indifferntiable authenticated encryption due to [[AB18](https://eprint.iacr.org/2018/547)]. That might be a good starting point for figuring out what we need.\r\n\r\nOK, I will update that reference.\r\n\r\n> This paper already rules out conventional schemes, like AES-GCM, that only do one pass of the ciphertext. Two-pass constructions, like AES-GCM-SIV, may work, but the paper doesn't seem to speak to this scheme directly.\r\n\r\nAES-GCM-SIV does not work.  GMAC is not second-preimage-resistant to an attacker who knows the key, so the attacker can encrypt plaintext P1, observe the MAC, then [construct](https://crypto.stackexchange.com/a/32575) plaintext P2 with the same MAC, and hence the same SIV.  The attacker has total freedom to construct P2 except for the last block.\r\n\r\n> Straw-man: What about STPRP-enciphering the AEAD-encrypted records? This is less efficient, obviously, but specifying this would be less complex. It also allows us to focus the analysis one primitive rather than two. And besides, we're already conceding a loss in efficiency in order to provide resistance to protocol-confusion attacks.\r\n\r\nUnfortunately, this is not sufficient.  STPRPs have ~zero generic guarantees against an attacker who holds the private key.  As an example, HCTR2(AES-GCM(...)) is presumably not sufficient, because HCTR2 also relies on a GMAC-like construction, so the above attack can likely be applied twice.\r\n\r\n> > I think the big question here is: how much do we care about maintaining zero overhead? This all gets a lot simpler if we're willing to add an 8 byte random seed to every message.\r\n> \r\n> Where are the 8 bytes of random seed? Maybe this comment is just out of date :) \r\n\r\nYeah, this was meant as an alternative proposal.  Adding entropy to each message is not as clever or compact, but it might be a lot simpler if we can make it work.\r\n\r\n> In any case, I'd be fine with a concession here. Adding entropy to the inputs to encryption --- say, by having the client append some random bytes to the associated data --- would definitely help with protocol confusion attacks.\r\n\r\nAdding entropy to the associated data doesn't work in general.  For example, in AES-GCM, the associated data only affects the MAC value.  I see four options:\r\n\r\n* Randomize the nonce.  This creates the possibility of nonce reuse due to collisions, so it might require lowering the cipher use limits for some ciphers.\r\n* Randomize the key.  This requires rerunning the key schedule for each message.  AES-GCM-SIV does this so I guess it's not prohibitive, but it's not free either.  Probably safe... EDIT: Except for related-key attacks, which seem like a significant concern.\r\n* Use a randomized cipher suite.  These already exist for TLS 1.2 (the CBC cipher suites, which use a random IV), but not for TLS 1.3.  I'm not aware of any randomized AEADs that also take a nonce, so we would need to define a new mode.\r\n* Add entropy _and_ layering.  Re-encrypting the ciphertext with any freshly keyed cipher (even a stream cipher) would work.  Wrapping (ciphertext + noise) in an STPRP is also probably sufficient, although it requires a stronger model.",
+          "createdAt": "2021-12-05T15:56:20Z",
+          "updatedAt": "2021-12-05T17:58:46Z"
+        },
+        {
+          "author": "bemasc",
+          "authorAssociation": "OWNER",
+          "body": "Converted to draft since we seem to be favoring #11.",
+          "createdAt": "2021-12-10T15:40:30Z",
+          "updatedAt": "2021-12-10T15:40:30Z"
+        },
+        {
+          "author": "bemasc",
+          "authorAssociation": "OWNER",
+          "body": "Closed in favor of #11",
+          "createdAt": "2022-01-04T16:58:24Z",
+          "updatedAt": "2022-01-04T16:58:24Z"
+        }
+      ],
+      "reviews": [
+        {
+          "id": "PRR_kwDOGKXUDM4xEnhQ",
+          "commit": {
+            "abbreviatedOid": "c15a96c"
+          },
+          "author": "cjpatton",
+          "authorAssociation": "COLLABORATOR",
+          "state": "COMMENTED",
+          "body": "The new AEAD scheme may suffice for protocol confusion attacks, but I worry about its suitability for TLS. In particular, the MAC-then-Encrypt paradigm is not generically secure against chosen ciphertext attacks. I'm curious where this construction came from?\r\n\r\nWe'll need an AEAD scheme that has two properties:\r\n(1) It is IND-CCA secure (as required for TLS); and\r\n(2) It is \"safe\" to model as an ideal cipher (for some definition of \"safe\").\r\n\r\nFor (2) you take [[ABM13](https://www.readcube.com/articles/10.1007%2F978-3-662-43933-3_18)] as the starting point. Quickly skimming this paper, my sense is that this is more about the design of a blockcipher that you want to model as an ideal cipher. Our problem is closer to the notion of indifferntiable authenticated encryption due to [[AB18](https://eprint.iacr.org/2018/547)]. That might be a good starting point for figuring out what we need. This paper already rules out conventional schemes, like AES-GCM, that only do one pass of the ciphertext. Two-pass constructions, like AES-GCM-SIV, may work, but the paper doesn't seem to speak to this scheme directly.\r\n\r\nStraw-man: What about STPRP-enciphering the AEAD-encrypted records? This is less efficient, obviously, but specifying this would be less complex. It also allows us to focus the analysis one primitive rather than two. And besides, we're already conceding a loss in efficiency in order to provide resistance to protocol-confusion attacks.\r\n\r\n> I think the big question here is: how much do we care about maintaining zero overhead? This all gets a lot simpler if we're willing to add an 8 byte random seed to every message.\r\n\r\nWhere are the 8 bytes of random seed? Maybe this comment is just out of date :) In any case, I'd be fine with a concession here. Adding entropy to the inputs to encryption --- say, by having the client append some random bytes to the associated data --- would definitely help with protocol confusion attacks.\r\n",
+          "createdAt": "2021-12-04T19:23:20Z",
+          "updatedAt": "2021-12-04T20:44:07Z",
+          "comments": [
+            {
+              "originalPosition": 8,
+              "body": "This is a bit confusing, since the encoding can't be said to be pseudorandom from the perspective of an adversary who knows the key. I think we want to be a bit more concrete about the attack here. How about something like this:\r\n```suggestion\r\n* Protocol confusion attack resistance: A malicious server or client may attempt to coerce its peer into sending a record that the network interprets as being associated with a different protocol. This specification is designed to mitigate such an attack.\r\n```",
+              "createdAt": "2021-12-04T19:23:20Z",
+              "updatedAt": "2021-12-04T20:44:07Z"
+            },
+            {
+              "originalPosition": 69,
+              "body": "Is the idea here that we would use this new AEAD algorithm for encrypting TLS records in place of, say, AES-GCM or ChaChaPoly? If so, this new scheme would require careful analysis to determine its suitability for TLS. It's a bit worrying because MAC-then-Encrypt is not generically secure against chosen ciphertext attacks. See https://eprint.iacr.org/2014/206.",
+              "createdAt": "2021-12-04T19:33:26Z",
+              "updatedAt": "2021-12-04T20:44:07Z"
+            },
+            {
+              "originalPosition": 67,
+              "body": "> The Pseudorandom cTLS extensions is sufficient to enable a fully pseudorandom bit stream and prevent protocol confusion attacks ...\r\n\r\nThere are two security claims made here, so I think it would be useful to break this down. First, we need to be careful with the term \"pseudorandom\". In particular, this is a property of the ciphertext stream produced by the client and server from the perspective of an attacker who doesn't know the secret key. An protocol-confusion attackers knows the secret key, so pseudorandomness doesn't help.\r\n\r\nSecond, protocol-confusino resistance is about making it hard for an attacker to coerce its peer into sending a ciphertext that has a particular structure. We're not sure yet what we need to make this attack hard (a formal definition would help :D), but we suspect that we'll need to be able to model the STPRP as an ideal cipher. I think the key observation here is that we also suspect we'll need to model the AEAD algorithm for the cTLS record layer as an ideal cipher. (Perhaps along the lines of https://eprint.iacr.org/2018/547.)",
+              "createdAt": "2021-12-04T19:46:48Z",
+              "updatedAt": "2021-12-04T20:44:07Z"
+            },
+            {
+              "originalPosition": 73,
+              "body": "Do we know that conventional AEADs don't prevent these attacks? I suspect the answer is yes, but we'd need to say why.",
+              "createdAt": "2021-12-04T19:56:30Z",
+              "updatedAt": "2021-12-04T20:44:07Z"
+            }
+          ]
+        },
+        {
+          "id": "PRR_kwDOGKXUDM4xH0J7",
+          "commit": {
+            "abbreviatedOid": "5929e75"
+          },
+          "author": "bemasc",
+          "authorAssociation": "OWNER",
+          "state": "COMMENTED",
+          "body": "",
+          "createdAt": "2021-12-06T15:52:18Z",
+          "updatedAt": "2021-12-06T15:52:18Z",
+          "comments": [
+            {
+              "originalPosition": 8,
+              "body": "OK, I've improved this description, using some of your text.",
+              "createdAt": "2021-12-06T15:52:18Z",
+              "updatedAt": "2021-12-06T15:52:18Z"
+            }
+          ]
+        },
+        {
+          "id": "PRR_kwDOGKXUDM4xH2TV",
+          "commit": {
+            "abbreviatedOid": "5929e75"
+          },
+          "author": "bemasc",
+          "authorAssociation": "OWNER",
+          "state": "COMMENTED",
+          "body": "",
+          "createdAt": "2021-12-06T15:58:53Z",
+          "updatedAt": "2021-12-06T15:58:53Z",
+          "comments": [
+            {
+              "originalPosition": 69,
+              "body": "Yes, this would (optionally) be the negotiated cipher suite, so it would need to be secure.  This scheme is SIV, which that scheme calls \"A4\" and marks as \"favored\", with a proof of security in Appendix A.3.",
+              "createdAt": "2021-12-06T15:58:53Z",
+              "updatedAt": "2021-12-06T15:58:53Z"
+            }
+          ]
+        },
+        {
+          "id": "PRR_kwDOGKXUDM4xH2gJ",
+          "commit": {
+            "abbreviatedOid": "5929e75"
+          },
+          "author": "bemasc",
+          "authorAssociation": "OWNER",
+          "state": "COMMENTED",
+          "body": "",
+          "createdAt": "2021-12-06T15:59:28Z",
+          "updatedAt": "2021-12-06T15:59:29Z",
+          "comments": [
+            {
+              "originalPosition": 67,
+              "body": "OK, I've tried to improve the precision of this description, reusing your terminology from the requirements section.",
+              "createdAt": "2021-12-06T15:59:29Z",
+              "updatedAt": "2021-12-06T15:59:29Z"
+            }
+          ]
+        },
+        {
+          "id": "PRR_kwDOGKXUDM4xH2kv",
+          "commit": {
+            "abbreviatedOid": "5929e75"
+          },
+          "author": "bemasc",
+          "authorAssociation": "OWNER",
+          "state": "COMMENTED",
+          "body": "",
+          "createdAt": "2021-12-06T15:59:41Z",
+          "updatedAt": "2021-12-06T15:59:41Z",
+          "comments": [
+            {
+              "originalPosition": 73,
+              "body": "Yes. I've added an explanation as to why.",
+              "createdAt": "2021-12-06T15:59:41Z",
+              "updatedAt": "2021-12-06T15:59:41Z"
+            }
+          ]
+        },
+        {
+          "id": "PRR_kwDOGKXUDM4xH26P",
+          "commit": {
+            "abbreviatedOid": "5929e75"
+          },
+          "author": "cjpatton",
+          "authorAssociation": "COLLABORATOR",
+          "state": "COMMENTED",
+          "body": "> I made it up, but it's just SIV with a slow MAC.\r\n> ...\r\n> FWIW, I do believe it has both properties.\r\n\r\nAck, let's add a reference to A4 from NRS14. We'll have to formalize and prove property (2). Maybe all we'll need is to model HMAC-SHA256 as an RO.\r\n\r\n> > For (2) you take [[ABM13](https://www.readcube.com/articles/10.1007%2F978-3-662-43933-3_18)] as the starting point. Quickly skimming this paper, my sense is that this is more about the design of a blockcipher that you want to model as an ideal cipher. Our problem is closer to the notion of indifferntiable authenticated encryption due to [[AB18](https://eprint.iacr.org/2018/547)]. That might be a good starting point for figuring out what we need.\r\n\r\n> OK, I will update that reference.\r\n\r\nThanks. Indiff AE may end up being stronger than what we need, since a protocol-confusion attacker doesn't use a decryption oracle. Thus the current construction may turn out to be sufficient.\r\n\r\n> AES-GCM-SIV does not work.  GMAC is not second-preimage-resistant to an attacker who knows the key, so the attacker can encrypt plaintext P1, observe the MAC, then [construct](https://crypto.stackexchange.com/a/32575) plaintext P2 with the same MAC, and hence the same SIV.  The attacker has total freedom to construct P2 except for the last block.\r\n\r\nAck, thanks for clarifying.\r\n\r\n>> Straw-man: What about STPRP-enciphering the AEAD-encrypted records? This is less efficient, obviously, but specifying this would be less complex. It also allows us to focus the analysis one primitive rather than two. And besides, we're already conceding a loss in efficiency in order to provide resistance to protocol-confusion attacks.\r\n\r\n> Unfortunately, this is not sufficient.  STPRPs have ~zero generic guarantees against an attacker who holds the private key.  As an example, HCTR2(AES-GCM(...)) is presumably not sufficient, because HCTR2 also relies on a GMAC-like construction, so the above attack can likely be applied twice.\r\n\r\nI agree that's not sufficient in general. We think we're going to have to model the STPRP as an ideal cipher; some schemes will be suitable for this, others won't. That's what (in)differenitability aims to capture. For some STPRPs (resp. AEADs) we'll be able to prove that the scheme is indifferentiable from an ideal cipher (ideal AE) when we model some underlying primitive (HMAC, say) as an RO. \r\n\r\n> Adding entropy to the associated data doesn't work in general.  For example, in AES-GCM, the associated data only affects the MAC value.  I see four options:\r\n>\r\n> * Randomize the nonce.  This creates the possibility of nonce reuse due to collisions, so it might require lowering the cipher use limits for some ciphers.\r\n> * Randomize the key.  This requires rerunning the key schedule for each message.  AES-GCM-SIV does this so I guess it's not prohibitive, but it's not free either.  Probably safe... EDIT: Except for related-key attacks, which seem like a significant concern.\r\n> * Use a randomized cipher suite.  These already exist for TLS 1.2 (the CBC cipher suites, which use a random IV), but not for TLS 1.3.  I'm not aware of any randomized AEADs that also take a nonce, so we would need to define a new mode.\r\n> * Add entropy _and_ layering.  Re-encrypting the ciphertext with any freshly keyed cipher (even a stream cipher) would work.  Wrapping (ciphertext + noise) in an STPRP is also probably sufficient, although it requires a stronger model.\r\n\r\nOptions 1 and 3 don't seem feasible without invasive changes to TLS 1.3, changes which would require revisiting existing security analysis. Option 3 doesn't seem to solve the problem, unless the attacker doesn't know which key the peer will derive. In order for this to work the peer would have to add fresh entropy to the key schedule, which the attacker would also be able to compute.\r\n\r\nHere's an attack that clarifies why adding entropy helps. Suppose the server wants the client to send a ciphertext with the first bit set to 1. If it chooses the exact plaintext, then even if we model the AEAD algorithm and the STPRP as ideal ciphers, this attack is easy: On average the attacker only have to try two plaintexts before I find a ciphertext that conforms to the desired pattern. On the other hand, if the attacker only controls part of the plaintext and the rest has `N` bits of min-entropy, then the attack can only succeed with probably at most `1/2 - 1/2^N`.\r\n\r\nI'm not sure whether we should require some mechanism for adding entropy to the inputs of encryption, particularly at this early stage. It might make sense to just leave this option in our back pocket for now.",
+          "createdAt": "2021-12-06T16:00:46Z",
+          "updatedAt": "2021-12-06T16:47:47Z",
+          "comments": [
+            {
+              "originalPosition": 5,
+              "body": "This is much better, but: nit: \"pseudorandom\" is still a bit confusing. How about \"This extension must make enable each peer to ensure that its output is unpredictable to its peer.\"",
+              "createdAt": "2021-12-06T16:00:46Z",
+              "updatedAt": "2021-12-06T16:47:47Z"
+            },
+            {
+              "originalPosition": 84,
+              "body": "This is indeed A4 from [[NRS14](https://eprint.iacr.org/2014/206.pdf)]. Can we add a reference to that paper here? ",
+              "createdAt": "2021-12-06T16:12:03Z",
+              "updatedAt": "2021-12-06T16:47:47Z"
+            }
+          ]
+        },
+        {
+          "id": "PRR_kwDOGKXUDM4xIVt9",
+          "commit": {
+            "abbreviatedOid": "7bbbc76"
+          },
+          "author": "bemasc",
+          "authorAssociation": "OWNER",
+          "state": "COMMENTED",
+          "body": "",
+          "createdAt": "2021-12-06T17:48:17Z",
+          "updatedAt": "2021-12-06T17:48:17Z",
+          "comments": [
+            {
+              "originalPosition": 84,
+              "body": "Done (in an an earlier paragraph).",
+              "createdAt": "2021-12-06T17:48:17Z",
+              "updatedAt": "2021-12-06T17:48:17Z"
+            }
+          ]
+        },
+        {
+          "id": "PRR_kwDOGKXUDM4xIVuU",
+          "commit": {
+            "abbreviatedOid": "7bbbc76"
+          },
+          "author": "bemasc",
+          "authorAssociation": "OWNER",
+          "state": "COMMENTED",
+          "body": "",
+          "createdAt": "2021-12-06T17:48:18Z",
+          "updatedAt": "2021-12-06T17:48:18Z",
+          "comments": [
+            {
+              "originalPosition": 5,
+              "body": "Adjusted to \"This extension must enable each peer to ensure that its own output is unlikely to resemble any other protocol.\".\r\n\r\n> > > Straw-man: What about STPRP-enciphering the AEAD-encrypted records? This is less efficient, obviously, but specifying this would be less complex. It also allows us to focus the analysis one primitive rather than two. And besides, we're already conceding a loss in efficiency in order to provide resistance to protocol-confusion attacks.\r\n> \r\n> > Unfortunately, this is not sufficient.  STPRPs have ~zero generic guarantees against an attacker who holds the private key.  As an example, HCTR2(AES-GCM(...)) is presumably not sufficient, because HCTR2 also relies on a GMAC-like construction, so the above attack can likely be applied twice.\r\n> \r\n> I agree that's not sufficient in general. We think we're going to have to model the STPRP as an ideal cipher; some schemes will be suitable for this, others won't.\r\n\r\nI'm not aware of any well-known STPRPs that could be modeled this way, and I'm hesitant to start trying to classify them or invent one.  Inventing a new AEAD (as here) actually seems easier (and more computationally efficient).\r\n\r\n> That's what (in)differenitability aims to capture. For some STPRPs (resp. AEADs) we'll be able to prove that the scheme is indifferentiable from an ideal cipher (ideal AE) when we model some underlying primitive (HMAC, say) as an RO.\r\n\r\nSpecifically, I haven't encountered any STPRPs that are built around hash functions, although I'm sure it's been done.\r\n\r\n> > Adding entropy to the associated data doesn't work in general.  For example, in AES-GCM, the associated data only affects the MAC value.  I see four options:\r\n> > \r\n> > * Randomize the nonce.  This creates the possibility of nonce reuse due to collisions, so it might require lowering the cipher use limits for some ciphers.\r\n> > * Randomize the key.  This requires rerunning the key schedule for each message.  AES-GCM-SIV does this so I guess it's not prohibitive, but it's not free either.  Probably safe... EDIT: Except for related-key attacks, which seem like a significant concern.\r\n> > * Use a randomized cipher suite.  These already exist for TLS 1.2 (the CBC cipher suites, which use a random IV), but not for TLS 1.3.  I'm not aware of any randomized AEADs that also take a nonce, so we would need to define a new mode.\r\n> > * Add entropy _and_ layering.  Re-encrypting the ciphertext with any freshly keyed cipher (even a stream cipher) would work.  Wrapping (ciphertext + noise) in an STPRP is also probably sufficient, although it requires a stronger model.\r\n> \r\n> Options 1 and 3 don't seem feasible without invasive changes to TLS 1.3, changes which would require revisiting existing security analysis.\r\n\r\nI assume you mean 1 and 2.  I agree, although maybe re-running the HKDF with extra entropy to generate a new key for each message would be safe.\r\n\r\n> Option 3 doesn't seem to solve the problem, unless the attacker doesn't know which key the peer will derive. In order for this to work the peer would have to add fresh entropy to the key schedule, which the attacker would also be able to compute.\r\n\r\nYes, TLS 1.2 cipher suites like TLS_RSA_WITH_AES_128_CBC_SHA (the default!) include a fresh random \"IV\" in [every record header](https://datatracker.ietf.org/doc/html/rfc5246#section-6.2.3.2).  For TLS 1.3, we would have to define a \"randomized AEAD\" whose output starts with N bytes of fresh entropy.\r\n\r\n> I'm not sure whether we should require some mechanism for adding entropy to the inputs of encryption, particularly at this early stage. It might make sense to just leave this option in our back pocket for now.\r\n\r\nI'm open to adding entropy instead of this PR, especially if it reduces the amount of specification text.  I'll give that a try in a separate PR for comparison.",
+              "createdAt": "2021-12-06T17:48:18Z",
+              "updatedAt": "2021-12-06T17:48:18Z"
+            }
+          ]
+        },
+        {
+          "id": "PRR_kwDOGKXUDM4xIbNk",
+          "commit": {
+            "abbreviatedOid": "d260954"
+          },
+          "author": "cjpatton",
+          "authorAssociation": "COLLABORATOR",
+          "state": "COMMENTED",
+          "body": "",
+          "createdAt": "2021-12-06T18:09:10Z",
+          "updatedAt": "2021-12-06T18:09:10Z",
+          "comments": [
+            {
+              "originalPosition": 5,
+              "body": "> I'm not aware of any well-known STPRPs that could be modeled this way, and I'm hesitant to start trying to classify them or invent one. Inventing a new AEAD (as here) actually seems easier (and more computationally efficient).\r\n\r\nOh, perhaps I've misunderstood what this PR is meant to do. My understanding is that all that is changing is we're adding an AEAD algorithm that would be used for the cTLS record layer. Does it also change how we handle plaintext records and record headers?\r\n\r\n",
+              "createdAt": "2021-12-06T18:09:10Z",
+              "updatedAt": "2021-12-06T18:09:10Z"
+            }
+          ]
+        },
+        {
+          "id": "PRR_kwDOGKXUDM4xIsXU",
+          "commit": {
+            "abbreviatedOid": "d260954"
+          },
+          "author": "bemasc",
+          "authorAssociation": "OWNER",
+          "state": "COMMENTED",
+          "body": "",
+          "createdAt": "2021-12-06T19:11:12Z",
+          "updatedAt": "2021-12-06T19:11:12Z",
+          "comments": [
+            {
+              "originalPosition": 5,
+              "body": "This PR (#10) is about a new TLS 1.3 ciphersuite that would be negotiated and used instead of TLS_AES_128_GCM_SHA256.  It doesn't directly change anything about the Pseudorandom layer.\r\n\r\nI've opened a new PR (#11) that tries to solve this differently, using extra entropy at the Pseudorandom layer.",
+              "createdAt": "2021-12-06T19:11:12Z",
+              "updatedAt": "2021-12-06T19:11:12Z"
+            }
+          ]
+        },
+        {
+          "id": "PRR_kwDOGKXUDM4xI--z",
+          "commit": {
+            "abbreviatedOid": "d260954"
+          },
+          "author": "cjpatton",
+          "authorAssociation": "COLLABORATOR",
+          "state": "COMMENTED",
+          "body": "",
+          "createdAt": "2021-12-06T20:24:48Z",
+          "updatedAt": "2021-12-06T20:24:48Z",
+          "comments": [
+            {
+              "originalPosition": 5,
+              "body": "To be clear, I think the question of whether to add random padding to increase entropy is a separate question. Fundamentally what this PR is about is making the most of the entropy that we have. I've added a comment to #11 with details.",
+              "createdAt": "2021-12-06T20:24:48Z",
+              "updatedAt": "2021-12-06T20:24:48Z"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "number": 11,
+      "id": "PR_kwDOGKXUDM4vdNVg",
+      "title": "Add an entropy-based defense against NAT Slipstream",
+      "url": "https://github.com/bemasc/pseudorandom-ctls/pull/11",
+      "state": "MERGED",
+      "author": "bemasc",
+      "authorAssociation": "OWNER",
+      "assignees": [],
+      "labels": [],
+      "body": "In this defense, the sender re-scrambles each outgoing ciphertext using\r\nfresh entropy, which is prepended to the ciphertext and used to tweak\r\nthe STPRP.",
+      "createdAt": "2021-12-06T19:03:03Z",
+      "updatedAt": "2022-01-04T16:57:31Z",
+      "baseRepository": "bemasc/pseudorandom-ctls",
+      "baseRefName": "main",
+      "baseRefOid": "aa9a8c983abff6265978b735490cd476b60d0656",
+      "headRepository": "bemasc/pseudorandom-ctls",
+      "headRefName": "bemasc-entropy",
+      "headRefOid": "af5fddf7b27e99fa0e82050e03c93f2a8f3fc247",
+      "closedAt": "2022-01-04T16:57:28Z",
+      "mergedAt": "2022-01-04T16:57:28Z",
+      "mergedBy": "bemasc",
+      "mergeCommit": {
+        "oid": "c124e5b5a0625902ca2b234038a69215505e1b60"
+      },
+      "comments": [
+        {
+          "author": "bemasc",
+          "authorAssociation": "OWNER",
+          "body": "This is an alternative to AES-SHA2-SIV (#10).",
+          "createdAt": "2021-12-06T19:03:28Z",
+          "updatedAt": "2021-12-06T19:03:28Z"
+        },
+        {
+          "author": "bemasc",
+          "authorAssociation": "OWNER",
+          "body": "> With this PR and with #10, I think there are two separable questions at play:\r\n> \r\n> 1. How do we make the most of the plaintext entropy that we have?\r\n> 2. Assuming the plaintext has no entropy, what does a defense look like?\r\n> \r\n> Both PRs address question (1): Here we encipher with an STPRP we hope will be sufficient, in some idealized model of computation; in #10 we replace the AEAD algorithm used in the record layer with something we hope will be sufficient, again in an idealized model of computation. (We'll need to be more precise about this model.) In either case, the concrete security will depend on how much entropy the plaintext has.\r\n\r\nThe plaintext has no entropy in this attack: it is entirely controlled by the attacker.\r\n\r\n> As far as I can tell, only this PR answers question (2). Do you agree?\r\n\r\nYes (but see below).\r\n\r\n> Here we add random padding so that the attacker cannot predict the ciphertext.\r\n> \r\n> Having an option to solve (2) seems like a sensible idea, regardless of which PR we take. There are probably a lot of ways to do this, however. Instead of settling on a design now, we could just punt and file an issue.\r\n> \r\n> As for a solution to (1), I have a weak preference for this PR because it doesn't require introducing a new AEAD mode.\r\n\r\nOK.  I've extended this PR to allow `E=0`, relying on the STPRP to provide a computational barrier via known-key indistinguishability, with warning text that this doesn't normally work.\r\n\r\n> Of course the cost is one additional pass of the plaintext: The new AEAD does two passes of the plaintext (one to hash and another to encrypt), as do typical STPRPs if I recall correctly. If we take this PR, then we end up doing three passes of the plaintext, whereas in theory we could get away with two.\r\n\r\nYes, it now takes three passes.  As a specific example, HCTR2 uses a MAC-Encrypt-MAC design with a GHASH variant and AES, so HCTR2(AES-GCM) would take two AES calls and three GHASH calls per block.\r\n\r\nThis is actually not as bad as I thought.  On some platforms, it's probably faster than AES-SHA2-SIV (although it also wastes some bandwidth).",
+          "createdAt": "2021-12-06T21:13:53Z",
+          "updatedAt": "2021-12-06T21:13:53Z"
+        }
+      ],
+      "reviews": [
+        {
+          "id": "PRR_kwDOGKXUDM4xI2CY",
+          "commit": {
+            "abbreviatedOid": "6b9289b"
+          },
+          "author": "cjpatton",
+          "authorAssociation": "COLLABORATOR",
+          "state": "COMMENTED",
+          "body": "With this PR and with #10, I think there are two separable questions at play:\r\n1. How do we make the most of the plaintext entropy that we have?\r\n2. Assuming the plaintext has no entropy, what does a defense look like?\r\n\r\nBoth PRs address question (1): Here we encipher with an STPRP we hope will be sufficient, in some idealized model of computation; in #10 we replace the AEAD algorithm used in the record layer with something we hope will be sufficient, again in an idealized model of computation. (We'll need to be more precise about this model.) In either case, the concrete security will depend on how much entropy the plaintext has.\r\n\r\nAs far as I can tell, only this PR answers question (2). Do you agree? Here we add random padding so that the attacker cannot predict the ciphertext.\r\n\r\nHaving an option to solve (2) seems like a sensible idea, regardless of which PR we take. There are probably a lot of ways to do this, however. Instead of settling on a design now, we could just punt and file an issue.\r\n\r\nAs for a solution to (1), I have a weak preference for this PR because it doesn't require introducing a new AEAD mode. Of course the cost is one additional pass of the plaintext: The new AEAD does two passes of the plaintext (one to hash and another to encrypt), as do typical STPRPs if I recall correctly. If we take this PR, then we end up doing three passes of the plaintext, whereas in theory we could get away with two.",
+          "createdAt": "2021-12-06T19:52:26Z",
+          "updatedAt": "2021-12-06T20:22:36Z",
+          "comments": [
+            {
+              "originalPosition": 47,
+              "body": "```suggestion\r\nThis attack is particularly straightforward when using the AES-GCM or ChaCha20-Poly1305 cipher suites, as much of the ciphertext is encrypted by XOR with a stream cipher.  A malicious peer in this threat model can choose desired ciphertext, XOR it with the keystream to produce the malicious plaintext, and rely on the other peer's encryption stage to reverse the encryption and reveal the desired ciphertext.\r\n```",
+              "createdAt": "2021-12-06T19:52:26Z",
+              "updatedAt": "2021-12-06T20:22:36Z"
+            },
+            {
+              "originalPosition": 54,
+              "body": "Does `STPRP-Encipher(key, tweak, CTLSCiphertext.encrypted_record + R)` work? Adding random padding seems simpler, since it avoids the need for a variable-length tweak.",
+              "createdAt": "2021-12-06T19:56:57Z",
+              "updatedAt": "2021-12-06T20:22:36Z"
+            }
+          ]
+        },
+        {
+          "id": "PRR_kwDOGKXUDM4xJBAR",
+          "commit": {
+            "abbreviatedOid": "165557e"
+          },
+          "author": "bemasc",
+          "authorAssociation": "OWNER",
+          "state": "COMMENTED",
+          "body": "",
+          "createdAt": "2021-12-06T20:34:07Z",
+          "updatedAt": "2021-12-06T20:34:07Z",
+          "comments": [
+            {
+              "originalPosition": 54,
+              "body": "The tweak is still a fixed length for each connection, and we already have multiple tweaks of different lengths due to the handshake, so I don't think tweak length is an issue.\r\n\r\nEither variation seems likely to be secure, although I'm not sure how to prove it.",
+              "createdAt": "2021-12-06T20:34:07Z",
+              "updatedAt": "2021-12-06T20:34:07Z"
+            }
+          ]
+        },
+        {
+          "id": "PRR_kwDOGKXUDM4xJBMy",
+          "commit": {
+            "abbreviatedOid": "165557e"
+          },
+          "author": "cjpatton",
+          "authorAssociation": "COLLABORATOR",
+          "state": "COMMENTED",
+          "body": "",
+          "createdAt": "2021-12-06T20:35:04Z",
+          "updatedAt": "2021-12-06T20:35:05Z",
+          "comments": [
+            {
+              "originalPosition": 54,
+              "body": "True enough. I'm also fine with either.",
+              "createdAt": "2021-12-06T20:35:04Z",
+              "updatedAt": "2021-12-06T20:35:05Z"
+            }
+          ]
+        },
+        {
+          "id": "PRR_kwDOGKXUDM4yP5tU",
+          "commit": {
+            "abbreviatedOid": "3a0be74"
+          },
+          "author": "cjpatton",
+          "authorAssociation": "COLLABORATOR",
+          "state": "COMMENTED",
+          "body": "I like the overall idea here, just some editorial comments.",
+          "createdAt": "2022-01-03T20:44:21Z",
+          "updatedAt": "2022-01-03T21:10:15Z",
+          "comments": [
+            {
+              "originalPosition": 9,
+              "body": "A bit simpler:\r\n\r\n```suggestion\r\n* Protocol confusion attack resistance: This attack assumes a malicious server or client that can coerce its peer into sending a ciphertext that could be misinterpreted as a different protocol by a third party.  This extension must enable each peer to ensure that its own output is unlikely to resemble any other protocol.\r\n```",
+              "createdAt": "2022-01-03T20:44:21Z",
+              "updatedAt": "2022-01-03T21:10:15Z"
+            },
+            {
+              "originalPosition": 35,
+              "body": "```suggestion\r\nPseudorandom cTLS also enciphers every record header.  In addition to the header, 16 bytes of the AEAD ciphertext itself is enciphered to ensure the input has enough entropy.  Any AEAD algorithm whose ciphertext overhead is less than 16 bytes is not compatible with this specification.\r\n```",
+              "createdAt": "2022-01-03T20:46:38Z",
+              "updatedAt": "2022-01-03T21:10:15Z"
+            },
+            {
+              "originalPosition": 49,
+              "body": "I read `0..16` as `[0, 1, ..., 15]`.\r\n```suggestion\r\nAs a defense against this attack, the Pseudorandom cTLS extension supports two optional keys named \"client-recipher\" and \"server-recipher\".  Each key's value is an integer `E` between 0 and 16 (inclusive) indicating how much entropy to add.  When the \"client-recipher\" key is present, the client MUST modify each outgoing ciphertext message as follows:\r\n```",
+              "createdAt": "2022-01-03T20:48:16Z",
+              "updatedAt": "2022-01-03T21:10:15Z"
+            },
+            {
+              "originalPosition": 60,
+              "body": "What we're saying is that either `R` is \"truly random\" or `R` is the output of a secure psuedorandom generator. I worry this could be confusing. Why not strike this paragraph and mandate above that `R` be the output of a cryptographically secure pseudorandom number generator?",
+              "createdAt": "2022-01-03T20:53:17Z",
+              "updatedAt": "2022-01-03T21:10:15Z"
+            },
+            {
+              "originalPosition": 53,
+              "body": "nit: It's odd that, in step (2), we append something to `tweak`, but in step (1) we generate something and don't append it to tweak until step (4). For clarity's sake I'd change this to\r\n\r\n\"Chose a random string containing `E` bytes and append it to `tweak`.\"\r\n\r\nThen remove \"`+ R`\" from step (4).",
+              "createdAt": "2022-01-03T20:56:32Z",
+              "updatedAt": "2022-01-03T21:10:15Z"
+            },
+            {
+              "originalPosition": 82,
+              "body": "```suggestion\r\ncTLS templates are presumed to be published by the server operator.  In order to defend against ciphertext confusion attacks ({{confusion-defense}}), the client MUST refuse to connect unless the server provides a cTLS template with a sufficiently large \"client-recipher\" value.\r\n```",
+              "createdAt": "2022-01-03T21:00:11Z",
+              "updatedAt": "2022-01-03T21:10:15Z"
+            },
+            {
+              "originalPosition": 62,
+              "body": "I suspect that resistance against known-key distinguishing attacks isn't going to be sufficient because the attack [here](https://github.com/bemasc/pseudorandom-ctls/pull/10#pullrequestreview-824143503) is effective even if the STPRP is an ideal cipher. In fact, it may turn out that this security property is necessary *even when `E=16`*.\r\n",
+              "createdAt": "2022-01-03T21:09:11Z",
+              "updatedAt": "2022-01-03T21:10:15Z"
+            }
+          ]
+        },
+        {
+          "id": "PRR_kwDOGKXUDM4ySuJu",
+          "commit": {
+            "abbreviatedOid": "cc0432e"
+          },
+          "author": "bemasc",
+          "authorAssociation": "OWNER",
+          "state": "COMMENTED",
+          "body": "",
+          "createdAt": "2022-01-04T16:34:40Z",
+          "updatedAt": "2022-01-04T16:34:41Z",
+          "comments": [
+            {
+              "originalPosition": 60,
+              "body": "Done",
+              "createdAt": "2022-01-04T16:34:40Z",
+              "updatedAt": "2022-01-04T16:34:41Z"
+            }
+          ]
+        },
+        {
+          "id": "PRR_kwDOGKXUDM4ySuPJ",
+          "commit": {
+            "abbreviatedOid": "cc0432e"
+          },
+          "author": "bemasc",
+          "authorAssociation": "OWNER",
+          "state": "COMMENTED",
+          "body": "",
+          "createdAt": "2022-01-04T16:35:01Z",
+          "updatedAt": "2022-01-04T16:35:01Z",
+          "comments": [
+            {
+              "originalPosition": 53,
+              "body": "OK, I've refactored this slightly along these lines.",
+              "createdAt": "2022-01-04T16:35:01Z",
+              "updatedAt": "2022-01-04T16:35:01Z"
+            }
+          ]
+        },
+        {
+          "id": "PRR_kwDOGKXUDM4ySuks",
+          "commit": {
+            "abbreviatedOid": "cc0432e"
+          },
+          "author": "bemasc",
+          "authorAssociation": "OWNER",
+          "state": "COMMENTED",
+          "body": "",
+          "createdAt": "2022-01-04T16:36:19Z",
+          "updatedAt": "2022-01-04T16:36:19Z",
+          "comments": [
+            {
+              "originalPosition": 62,
+              "body": "I'm not sure what you mean exactly, but I think the mental gymnastics have gotten too convoluted here, so I've removed this whole paragraph.  If a TSPRP with the right properties magically appears in the future, we can have this discussion then.",
+              "createdAt": "2022-01-04T16:36:19Z",
+              "updatedAt": "2022-01-04T16:36:20Z"
+            }
+          ]
+        },
+        {
+          "id": "PRR_kwDOGKXUDM4ySx9d",
+          "commit": {
+            "abbreviatedOid": "cc0432e"
+          },
+          "author": "cjpatton",
+          "authorAssociation": "COLLABORATOR",
+          "state": "APPROVED",
+          "body": "",
+          "createdAt": "2022-01-04T16:48:31Z",
+          "updatedAt": "2022-01-04T16:48:31Z",
+          "comments": []
+        },
+        {
+          "id": "PRR_kwDOGKXUDM4ySyNW",
+          "commit": {
+            "abbreviatedOid": "cc0432e"
+          },
+          "author": "cjpatton",
+          "authorAssociation": "COLLABORATOR",
+          "state": "COMMENTED",
+          "body": "",
+          "createdAt": "2022-01-04T16:49:28Z",
+          "updatedAt": "2022-01-04T16:49:28Z",
+          "comments": [
+            {
+              "originalPosition": 62,
+              "body": "That works for me.",
+              "createdAt": "2022-01-04T16:49:28Z",
+              "updatedAt": "2022-01-04T16:49:28Z"
+            }
+          ]
+        },
+        {
+          "id": "PRR_kwDOGKXUDM4ySzat",
+          "commit": {
+            "abbreviatedOid": "cc0432e"
+          },
+          "author": "cjpatton",
+          "authorAssociation": "COLLABORATOR",
+          "state": "COMMENTED",
+          "body": "",
+          "createdAt": "2022-01-04T16:54:00Z",
+          "updatedAt": "2022-01-04T16:54:01Z",
+          "comments": [
+            {
+              "originalPosition": 62,
+              "body": "The tricky thing here is that the properties you want from the TSPRP are going to depend on the strength of the attack you want to defend against. I'll try to articulate this in an issue.",
+              "createdAt": "2022-01-04T16:54:00Z",
+              "updatedAt": "2022-01-04T16:54:01Z"
+            }
+          ]
+        },
+        {
+          "id": "PRR_kwDOGKXUDM4ySzyj",
+          "commit": {
+            "abbreviatedOid": "af5fddf"
+          },
+          "author": "cjpatton",
+          "authorAssociation": "COLLABORATOR",
+          "state": "APPROVED",
+          "body": "",
+          "createdAt": "2022-01-04T16:55:27Z",
+          "updatedAt": "2022-01-04T16:55:27Z",
+          "comments": []
+        }
+      ]
+    },
+    {
+      "number": 12,
+      "id": "PR_kwDOGKXUDM4vr2pR",
+      "title": "Add an optional start-tag key to enable key rotation",
+      "url": "https://github.com/bemasc/pseudorandom-ctls/pull/12",
+      "state": "MERGED",
+      "author": "bemasc",
+      "authorAssociation": "OWNER",
+      "assignees": [],
+      "labels": [],
+      "body": "",
+      "createdAt": "2021-12-10T15:36:56Z",
+      "updatedAt": "2022-01-04T16:36:35Z",
+      "baseRepository": "bemasc/pseudorandom-ctls",
+      "baseRefName": "main",
+      "baseRefOid": "ccb437cbe21fb908e70a2ca71909a38f49bfc76b",
+      "headRepository": "bemasc/pseudorandom-ctls",
+      "headRefName": "bemasc-start-tag",
+      "headRefOid": "f7af698a60a6c34ded67ead5b767eb9a5dc18ed5",
+      "closedAt": "2022-01-04T16:36:32Z",
+      "mergedAt": "2022-01-04T16:36:32Z",
+      "mergedBy": "bemasc",
+      "mergeCommit": {
+        "oid": "aa9a8c983abff6265978b735490cd476b60d0656"
+      },
+      "comments": [],
+      "reviews": [
+        {
+          "id": "PRR_kwDOGKXUDM4yP9eh",
+          "commit": {
+            "abbreviatedOid": "3278cf1"
+          },
+          "author": "cjpatton",
+          "authorAssociation": "COLLABORATOR",
+          "state": "APPROVED",
+          "body": "I'd bump the minimum recommended tag size from 4 to 8 bytes, but otherwise looks good.",
+          "createdAt": "2022-01-03T21:12:57Z",
+          "updatedAt": "2022-01-03T21:13:35Z",
+          "comments": [
+            {
+              "originalPosition": 21,
+              "body": "```suggestion\r\nStart tags can be used to enable rotation of the Pseudorandom cTLS key.  With a tag in place, servers can use trial decryption to identify which key (old or new) is in use for each new connection.  To avoid false matches, values of `T` less than 8 are NOT RECOMMENDED.\r\n```",
+              "createdAt": "2022-01-03T21:12:57Z",
+              "updatedAt": "2022-01-03T21:13:35Z"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "number": 13,
+      "id": "PR_kwDOGKXUDM4wNBn8",
+      "title": "s/STPRP/TSPRP/",
+      "url": "https://github.com/bemasc/pseudorandom-ctls/pull/13",
+      "state": "MERGED",
+      "author": "bemasc",
+      "authorAssociation": "OWNER",
+      "assignees": [],
+      "labels": [],
+      "body": "This seems to match the lingo of the literature better.",
+      "createdAt": "2021-12-22T21:20:00Z",
+      "updatedAt": "2022-01-04T15:37:46Z",
+      "baseRepository": "bemasc/pseudorandom-ctls",
+      "baseRefName": "main",
+      "baseRefOid": "61c7ad4e7065ea67a361943d59edc00c40f375e8",
+      "headRepository": "bemasc/pseudorandom-ctls",
+      "headRefName": "bemasc-tsprp",
+      "headRefOid": "fe6322494f3f9f6e2ce69cded1d12bbf2d3a7a61",
+      "closedAt": "2022-01-04T15:37:41Z",
+      "mergedAt": "2022-01-04T15:37:41Z",
+      "mergedBy": "bemasc",
+      "mergeCommit": {
+        "oid": "ccb437cbe21fb908e70a2ca71909a38f49bfc76b"
+      },
+      "comments": [],
+      "reviews": [
+        {
+          "id": "PRR_kwDOGKXUDM4yIKGy",
+          "commit": {
+            "abbreviatedOid": "fe63224"
+          },
+          "author": "cjpatton",
+          "authorAssociation": "COLLABORATOR",
+          "state": "APPROVED",
+          "body": "I'm more familiar with \"STPRP\", though admittedly \"TSPRP\" seems to be a more logical name :ship: ",
+          "createdAt": "2021-12-28T16:53:14Z",
+          "updatedAt": "2021-12-28T16:53:14Z",
+          "comments": []
+        }
+      ]
+    },
+    {
+      "number": 15,
+      "id": "PR_kwDOGKXUDM40EkDt",
+      "title": "Update based on changes in cTLS-05",
+      "url": "https://github.com/bemasc/pseudorandom-ctls/pull/15",
+      "state": "MERGED",
+      "author": "bemasc",
+      "authorAssociation": "OWNER",
+      "assignees": [],
+      "labels": [],
+      "body": "",
+      "createdAt": "2022-03-07T22:17:29Z",
+      "updatedAt": "2022-03-08T16:09:50Z",
+      "baseRepository": "bemasc/pseudorandom-ctls",
+      "baseRefName": "main",
+      "baseRefOid": "c124e5b5a0625902ca2b234038a69215505e1b60",
+      "headRepository": "bemasc/pseudorandom-ctls",
+      "headRefName": "bemasc-ctls-05",
+      "headRefOid": "ba8c4ccccab4462485bc5da76460a91b5da54487",
+      "closedAt": "2022-03-08T16:09:32Z",
+      "mergedAt": "2022-03-08T16:09:32Z",
+      "mergedBy": "bemasc",
+      "mergeCommit": {
+        "oid": "066cb3001b4cc9e568f8cb5c4a1c682a41c79da4"
+      },
+      "comments": [
+        {
+          "author": "bemasc",
+          "authorAssociation": "OWNER",
+          "body": "The new draft just came out today.\r\n\r\n> The only significant change appears to be the removal of the profile ID, is that right?\r\n\r\nThe profile ID was moved into the ClientHello, which we are treating as payload.  Also, the ContentType system was aligned with TLS, `suppressSequenceNumber` was removed, and an \"optional\" section was introduced.",
+          "createdAt": "2022-03-08T02:34:48Z",
+          "updatedAt": "2022-03-08T02:34:48Z"
+        }
+      ],
+      "reviews": [
+        {
+          "id": "PRR_kwDOGKXUDM41yKh_",
+          "commit": {
+            "abbreviatedOid": "ba8c4cc"
+          },
+          "author": "cjpatton",
+          "authorAssociation": "COLLABORATOR",
+          "state": "COMMENTED",
+          "body": "I have not kept up with the cTLS changes, so I can't speak to the correctness of the changes. The only significant change appears to be the removal of the profile ID, is that right?",
+          "createdAt": "2022-03-07T22:45:51Z",
+          "updatedAt": "2022-03-07T22:45:51Z",
+          "comments": []
+        },
+        {
+          "id": "PRR_kwDOGKXUDM41yvIb",
+          "commit": {
+            "abbreviatedOid": "ba8c4cc"
+          },
+          "author": "cjpatton",
+          "authorAssociation": "COLLABORATOR",
+          "state": "APPROVED",
+          "body": "",
+          "createdAt": "2022-03-08T03:01:41Z",
+          "updatedAt": "2022-03-08T03:01:41Z",
+          "comments": []
+        }
+      ]
+    },
+    {
+      "number": 16,
+      "id": "PR_kwDOGKXUDM40ElbN",
+      "title": "Change reciphering approach",
+      "url": "https://github.com/bemasc/pseudorandom-ctls/pull/16",
+      "state": "MERGED",
+      "author": "bemasc",
+      "authorAssociation": "OWNER",
+      "assignees": [],
+      "labels": [],
+      "body": "This seems likely to be easier for analysis and is simpler to describe.",
+      "createdAt": "2022-03-07T22:24:38Z",
+      "updatedAt": "2022-03-08T02:32:48Z",
+      "baseRepository": "bemasc/pseudorandom-ctls",
+      "baseRefName": "main",
+      "baseRefOid": "c124e5b5a0625902ca2b234038a69215505e1b60",
+      "headRepository": "bemasc/pseudorandom-ctls",
+      "headRefName": "bemasc-recipher",
+      "headRefOid": "8228092b6c3fbdf02352df962a008cb54e6b1a5f",
+      "closedAt": "2022-03-08T02:32:46Z",
+      "mergedAt": "2022-03-08T02:32:46Z",
+      "mergedBy": "bemasc",
+      "mergeCommit": {
+        "oid": "a410715245ecfe150b48bdc2732ac05a55d28aae"
+      },
+      "comments": [
+        {
+          "author": "bemasc",
+          "authorAssociation": "OWNER",
+          "body": "@cjpatton I believe this implements your suggestion from a while back.",
+          "createdAt": "2022-03-07T22:25:22Z",
+          "updatedAt": "2022-03-07T22:25:22Z"
+        },
+        {
+          "author": "bemasc",
+          "authorAssociation": "OWNER",
+          "body": "I'd like to find better names, but I don't think \"random-pad\" quite covers it.  Even when the padding is zero, this extension has a major effect, reciphering all encrypted messages (and likely tripling CPU time).\r\n\r\nI'll merge as-is and we can try to think of better names separately.",
+          "createdAt": "2022-03-08T02:32:41Z",
+          "updatedAt": "2022-03-08T02:32:41Z"
+        }
+      ],
+      "reviews": [
+        {
+          "id": "PRR_kwDOGKXUDM41yMuR",
+          "commit": {
+            "abbreviatedOid": "8228092"
+          },
+          "author": "cjpatton",
+          "authorAssociation": "COLLABORATOR",
+          "state": "APPROVED",
+          "body": "LGTM, but consider renaming \"server-recipher\" and \"client-recipher\" to something more meaningful. Perhaps \"server-random-pad\" and \"client-random-pad\"?",
+          "createdAt": "2022-03-07T22:51:52Z",
+          "updatedAt": "2022-03-07T22:51:52Z",
+          "comments": []
+        }
+      ]
+    },
+    {
+      "number": 17,
+      "id": "PR_kwDOGKXUDM40EmWe",
+      "title": "Mention HCTR2",
+      "url": "https://github.com/bemasc/pseudorandom-ctls/pull/17",
+      "state": "MERGED",
+      "author": "bemasc",
+      "authorAssociation": "OWNER",
+      "assignees": [],
+      "labels": [],
+      "body": "",
+      "createdAt": "2022-03-07T22:29:24Z",
+      "updatedAt": "2022-03-08T02:29:24Z",
+      "baseRepository": "bemasc/pseudorandom-ctls",
+      "baseRefName": "main",
+      "baseRefOid": "c124e5b5a0625902ca2b234038a69215505e1b60",
+      "headRepository": "bemasc/pseudorandom-ctls",
+      "headRefName": "bemasc-hctr2",
+      "headRefOid": "2633786cead38fef8d4657275c3f98df6ff2efe4",
+      "closedAt": "2022-03-08T02:29:21Z",
+      "mergedAt": "2022-03-08T02:29:21Z",
+      "mergedBy": "bemasc",
+      "mergeCommit": {
+        "oid": "a47f33d34ae7bdf68bbfd437ce1e66f0e85307db"
+      },
+      "comments": [],
+      "reviews": [
+        {
+          "id": "PRR_kwDOGKXUDM41yK2b",
+          "commit": {
+            "abbreviatedOid": "2633786"
+          },
+          "author": "cjpatton",
+          "authorAssociation": "COLLABORATOR",
+          "state": "APPROVED",
+          "body": "",
+          "createdAt": "2022-03-07T22:46:24Z",
+          "updatedAt": "2022-03-07T22:46:24Z",
+          "comments": []
+        }
+      ]
+    },
+    {
+      "number": 18,
+      "id": "PR_kwDOGKXUDM40H4b1",
+      "title": "Simplify defenses and key rotation by leaning on profile_id",
+      "url": "https://github.com/bemasc/pseudorandom-ctls/pull/18",
+      "state": "OPEN",
+      "author": "bemasc",
+      "authorAssociation": "OWNER",
+      "assignees": [],
+      "labels": [],
+      "body": "With cTLS-05, the profile_id is now in exactly the place where start-tag\r\nwould put its MAC bytes, and can be used in the same way.",
+      "createdAt": "2022-03-08T18:42:26Z",
+      "updatedAt": "2022-03-09T19:58:44Z",
+      "baseRepository": "bemasc/pseudorandom-ctls",
+      "baseRefName": "main",
+      "baseRefOid": "066cb3001b4cc9e568f8cb5c4a1c682a41c79da4",
+      "headRepository": "bemasc/pseudorandom-ctls",
+      "headRefName": "bemasc-trial",
+      "headRefOid": "553d8fa5047356396eb8cf3c60fd373a894b9b4e",
+      "closedAt": null,
+      "mergedAt": null,
+      "mergedBy": null,
+      "mergeCommit": null,
+      "comments": [],
+      "reviews": [
+        {
+          "id": "PRR_kwDOGKXUDM4179jx",
+          "commit": {
+            "abbreviatedOid": "553d8fa"
+          },
+          "author": "bemasc",
+          "authorAssociation": "OWNER",
+          "state": "COMMENTED",
+          "body": "",
+          "createdAt": "2022-03-09T19:58:43Z",
+          "updatedAt": "2022-03-09T19:58:44Z",
+          "comments": [
+            {
+              "originalPosition": 27,
+              "body": "@cjpatton I think most \"controversial\" change here is to remove this recommendation, and instead tell servers to authenticate the ClientHello before responding.  I think this is probably the wisest solution due to the [Parrot Is Dead](http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.686.1317&rep=rep1&type=pdf) problem.",
+              "createdAt": "2022-03-09T19:58:44Z",
+              "updatedAt": "2022-03-09T19:58:44Z"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
