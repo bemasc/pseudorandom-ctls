@@ -5,8 +5,8 @@
 TLS WG                                                       B. Schwartz
 Internet-Draft                                                Google LLC
 Intended status: Experimental                                  C. Patton
-Expires: 9 September 2022                               Cloudflare, Inc.
-                                                            8 March 2022
+Expires: 3 October 2022                                 Cloudflare, Inc.
+                                                            1 April 2022
 
 
                   The Pseudorandom Extension for cTLS
@@ -39,7 +39,7 @@ Status of This Memo
    time.  It is inappropriate to use Internet-Drafts as reference
    material or to cite them other than as "work in progress."
 
-   This Internet-Draft will expire on 9 September 2022.
+   This Internet-Draft will expire on 3 October 2022.
 
 Copyright Notice
 
@@ -68,11 +68,11 @@ Table of Contents
      3.2.  Use
        3.2.1.  With Streaming Transports
        3.2.2.  With Datagram Transports
-     3.3.  Optional Keys
-       3.3.1.  "start-tag"
-       3.3.2.  "client-recipher" and "server-recipher"
+     3.3.  Protocol confusion defense
    4.  Plaintext Alerts
    5.  Operational Considerations
+     5.1.  Multiple profiles and key rotation
+     5.2.  Computational cost
    6.  Security Considerations
    7.  Privacy Considerations
    8.  IANA Considerations
@@ -221,7 +221,7 @@ Table of Contents
    using an AEAD algorithm whose output is purely pseudorandom, such as
    AES-GCM and ChaCha20-Poly1305.  If the ciphertext might not be
    pseudorandom (e.g. when handling hostile plaintext), the ciphertext
-   can be "reciphered" to ensure pseudorandomness (see Section 3.3.2).
+   can be "reciphered" to ensure pseudorandomness (see Section 3.3).
 
 3.2.1.  With Streaming Transports
 
@@ -317,37 +317,7 @@ Table of Contents
    3.  Replace Handshake.body with TSPRP-Decipher(key, tweak,
        Handshake.body).
 
-3.3.  Optional Keys
-
-3.3.1.  "start-tag"
-
-   In some deployments, it may be necessary or valuable to authenticate
-   that a ClientHello was issued with a particular Pseudorandom cTLS
-   configuration.  Merely deciphering the ClientHello, and observing
-   that it parses correctly, does not conclusively prove that it was
-   issued as expected.  It is possible, though not likely, that a random
-   byte sequence could be parsed as a valid cTLS ClientHello.
-
-   To require proof that the sender was using a particular Pseudorandom
-   cTLS template, the template MAY include the optional key "start-tag"
-   whose value is an integer T between 1 and 32 (inclusive).  When this
-   key is present, the client MUST prepend T zero bytes to the
-   ClientHello before calling TSPRP-Encipher() on the ClientHello
-   payload, and the server SHOULD verify that these bytes are zero after
-   calling TSPRP-Decipher().  This arrangement authenticates the TSPRP
-   [Encode-Then-Encipher].  The indicated length in the Handshake header
-   is not altered, so this does not reduce the maximum handshake message
-   size.
-
-   Start tags can be used to enable rotation of the Pseudorandom cTLS
-   key.  With a tag in place, servers can use trial decryption to
-   identify which key (old or new) is in use for each new connection.
-   To avoid false matches, values of T less than 8 are NOT RECOMMENDED.
-
-   When "start-tag" is in use, the "pseudorandom" key MAY appear in the
-   template's "optional" section.
-
-3.3.2.  "client-recipher" and "server-recipher"
+3.3.  Protocol confusion defense
 
    The procedure described in Section 3.2 is sufficient to render the
    bitstream pseudorandom to a third party when both peers are operating
@@ -396,29 +366,48 @@ Table of Contents
    fragments have little entropy.
 
    A standard TLS Alert fragment is always 2 bytes long.  In
-   Pseudorandom cTLS, senders MUST prepend at least 16 random bytes to
-   any plaintext Alert fragment.  Enciphering and deciphering then
-   proceed identically to other CTLSPlaintext messages.  The recipient
-   MUST remove these bytes before passing the CTLSPlaintext to the cTLS
-   implementation.
-
-   Servers SHOULD expand any Alert message following the ClientHello to
-   the same size as their usual ServerHello, and SHOULD send additional
-   random TCP segments or datagrams to match the sizes of subsequent
-   components of their ordinary success response.  Otherwise, an
-   adversary could use probing to learn the allowed lengths of
-   ClientHellos and the fraction of ciphertexts that decipher to valid
-   ClientHellos.
+   Pseudorandom cTLS, senders MUST append at least 16 random bytes to
+   any plaintext Alert fragment and increase CTLSPlaintext.length
+   accordingly.  Enciphering and deciphering then proceed identically to
+   other CTLSPlaintext messages.  The recipient MUST remove these bytes
+   before passing the CTLSPlaintext to the cTLS implementation.
 
       QUESTION: Are there client-issued Alerts in response to malformed
       ServerHello?
 
 5.  Operational Considerations
 
-   Pseudorandom cTLS can interfere with the use of multiple profiles on
-   a single server.  To use Pseudorandom cTLS with multiple profiles,
-   servers must use the same TSPRP key and the same lengths of
+5.1.  Multiple profiles and key rotation
+
+   Pseudorandom cTLS supports multiple profiles on the same server port.
+   If all profiles share the same Pseudorandom cTLS configuration (and
+   the same length of connection_id if applicable), the server simply
+   deciphers the incoming data before reading the profile_id or
    connection_id.
+
+   If multiple Pseudorandom cTLS configurations are in use, the server
+   can use trial deciphering to determine which profile applies to each
+   new connection.  A trial is confirmed as correct if the deciphered
+   ClientHello.profile_id matches an expected value.  To avoid false
+   matches, server operators SHOULD choose a profile_id whose length is
+   at least 8 bytes.
+
+   Pseudorandom cTLS key rotation can be represented as a transition
+   from one profile to another.  If the only difference between two
+   profiles is the Pseudorandom cTLS configuration, the server MAY use
+   the same profile_id for both profiles, relying on trial deciphering
+   to identify which version is in use.  Trial deciphering is also
+   sufficient to determine whether the client is using Pseudorandom
+   cTLS, so the "pseudorandom" key MAY appear in the template's
+   "optional" section.
+
+   Pseudorandom cTLS does not support demultiplexing distinct
+   configurations by connection_id.  Such use would require both the
+   client and server to perform trial deciphering on every datagram.
+   Instead, clients that implement Pseudorandom cTLS MUST use a distinct
+   transport session (e.g.  UDP 5-tuple) for each cTLS profile.
+
+5.2.  Computational cost
 
    Pseudorandom cTLS adds a constant, symmetric computational cost to
    sending and receiving every record, roughly similar to the cost of
@@ -448,7 +437,7 @@ Table of Contents
 
    cTLS templates are presumed to be published by the server operator.
    In order to defend against ciphertext confusion attacks
-   (Section 3.3.2), the client MUST refuse to connect unless the server
+   (Section 3.3), the client MUST refuse to connect unless the server
    provides a cTLS template with a sufficiently large "client-recipher"
    value.
 
@@ -468,11 +457,27 @@ Table of Contents
 7.  Privacy Considerations
 
    Pseudorandom cTLS is intended to improve privacy in scenarios where
-   the adversary lacks access to the cTLS template.  However, if the
-   adversary does have access to the cTLS template, and the template
-   does not have a distinctive profile_id, Pseudorandom cTLS can reduce
-   privacy, by enabling strong confirmation that a connection is indeed
-   using that template.
+   the adversary can observe traffic to various servers but lacks access
+   to their cTLS templates, by preventing the adversary from determining
+   which profiles are in use by which clients and servers.  If instead
+   the adversary does have access to some cTLS templates, and these
+   templates do not have distinctive profile_id values, Pseudorandom
+   cTLS can reduce privacy, by enabling strong confirmation that a
+   connection is using a specific profile.
+
+   When Pseudorandom cTLS is enabled, the adversary can still observe
+   the length and timing of messages, so templates that differ in these
+   can still be distinguished.  Implementations MAY use TLS padding to
+   reduce the observable patterns.
+
+   The adversary could also send random data to the server (a "probing
+   attack") in order to learn the fraction of messages of each length
+   that produce valid ClientHellos.  This "probability fingerprint"
+   could allow discrimination between profiles.  Server operators that
+   wish to defend against probing attacks SHOULD choose a sufficiently
+   long profile_id that invalid ClientHellos are always rejected without
+   eliciting a response.  A 15-byte profile_id provides 128-bit
+   security.
 
 8.  IANA Considerations
 
@@ -547,14 +552,6 @@ Table of Contents
               <https://www.rfc-editor.org/rfc/rfc9000>.
 
 9.2.  Informative References
-
-   [Encode-Then-Encipher]
-              Bellare, M. and P. Rogaway, "Encode-Then-Encipher
-              Encryption: How to Exploit Nonces or Redundancy in
-              Plaintexts for Efficient Cryptography", Advances in
-              Cryptology - ASIACRYPT 2000 pp. 317-330,
-              DOI 10.1007/3-540-44448-3_24, 2000,
-              <https://doi.org/10.1007/3-540-44448-3_24>.
 
    [HCTR2]    "Length-preserving encryption with HCTR2", n.d.,
               <https://eprint.iacr.org/2021/1441/20211027:085150>.

@@ -1014,11 +1014,11 @@ svg [stroke="fill"], svg [fill^="#fff"] {
 <thead><tr>
 <td class="left">Internet-Draft</td>
 <td class="center">Pseudorandom cTLS</td>
-<td class="right">March 2022</td>
+<td class="right">April 2022</td>
 </tr></thead>
 <tfoot><tr>
 <td class="left">Schwartz &amp; Patton</td>
-<td class="center">Expires 9 September 2022</td>
+<td class="center">Expires 3 October 2022</td>
 <td class="right">[Page]</td>
 </tr></tfoot>
 </table>
@@ -1031,12 +1031,12 @@ svg [stroke="fill"], svg [fill^="#fff"] {
 <dd class="internet-draft">draft-cpbs-pseudorandom-ctls-latest</dd>
 <dt class="label-published">Published:</dt>
 <dd class="published">
-<time datetime="2022-03-08" class="published">8 March 2022</time>
+<time datetime="2022-04-01" class="published">1 April 2022</time>
     </dd>
 <dt class="label-intended-status">Intended Status:</dt>
 <dd class="intended-status">Experimental</dd>
 <dt class="label-expires">Expires:</dt>
-<dd class="expires"><time datetime="2022-09-09">9 September 2022</time></dd>
+<dd class="expires"><time datetime="2022-10-03">3 October 2022</time></dd>
 <dt class="label-authors">Authors:</dt>
 <dd class="authors">
 <div class="author">
@@ -1082,7 +1082,7 @@ svg [stroke="fill"], svg [fill^="#fff"] {
         time. It is inappropriate to use Internet-Drafts as reference
         material or to cite them other than as "work in progress."<a href="#section-boilerplate.1-3" class="pilcrow">¶</a></p>
 <p id="section-boilerplate.1-4">
-        This Internet-Draft will expire on 9 September 2022.<a href="#section-boilerplate.1-4" class="pilcrow">¶</a></p>
+        This Internet-Draft will expire on 3 October 2022.<a href="#section-boilerplate.1-4" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="copyright">
@@ -1151,15 +1151,7 @@ svg [stroke="fill"], svg [fill^="#fff"] {
                 </ul>
 </li>
               <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.3.2.3">
-                <p id="section-toc.1-1.3.2.3.1"><a href="#section-3.3" class="xref">3.3</a>.  <a href="#name-optional-keys" class="xref">Optional Keys</a></p>
-<ul class="compact toc ulBare ulEmpty">
-<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.3.2.3.2.1">
-                    <p id="section-toc.1-1.3.2.3.2.1.1"><a href="#section-3.3.1" class="xref">3.3.1</a>.  <a href="#name-start-tag" class="xref">"start-tag"</a></p>
-</li>
-                  <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.3.2.3.2.2">
-                    <p id="section-toc.1-1.3.2.3.2.2.1"><a href="#section-3.3.2" class="xref">3.3.2</a>.  <a href="#name-client-recipher-and-server-" class="xref">"client-recipher" and "server-recipher"</a></p>
-</li>
-                </ul>
+                <p id="section-toc.1-1.3.2.3.1"><a href="#section-3.3" class="xref">3.3</a>.  <a href="#name-protocol-confusion-defense" class="xref">Protocol confusion defense</a></p>
 </li>
             </ul>
 </li>
@@ -1168,6 +1160,14 @@ svg [stroke="fill"], svg [fill^="#fff"] {
 </li>
           <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.5">
             <p id="section-toc.1-1.5.1"><a href="#section-5" class="xref">5</a>.  <a href="#name-operational-considerations" class="xref">Operational Considerations</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.5.2.1">
+                <p id="section-toc.1-1.5.2.1.1"><a href="#section-5.1" class="xref">5.1</a>.  <a href="#name-multiple-profiles-and-key-r" class="xref">Multiple profiles and key rotation</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.5.2.2">
+                <p id="section-toc.1-1.5.2.2.1"><a href="#section-5.2" class="xref">5.2</a>.  <a href="#name-computational-cost" class="xref">Computational cost</a></p>
+</li>
+            </ul>
 </li>
           <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.6">
             <p id="section-toc.1-1.6.1"><a href="#section-6" class="xref">6</a>.  <a href="#name-security-considerations" class="xref">Security Considerations</a></p>
@@ -1326,7 +1326,7 @@ TSPRP-Decipher(key, tweak, ciphertext) -&gt; message
 </li>
         </ul>
 <p id="section-3.2-7">Pseudorandom cTLS also enciphers every record header.  In addition to the header, 16 bytes of the AEAD ciphertext itself is enciphered to ensure the input has enough entropy.  Any AEAD algorithm whose ciphertext overhead is less than 16 bytes is not compatible with this specification.<a href="#section-3.2-7" class="pilcrow">¶</a></p>
-<p id="section-3.2-8">By default, Pseudorandom cTLS assumes that the TLS ciphertext is using an AEAD algorithm whose output is purely pseudorandom, such as AES-GCM and ChaCha20-Poly1305.  If the ciphertext might not be pseudorandom (e.g. when handling hostile plaintext), the ciphertext can be "reciphered" to ensure pseudorandomness (see <a href="#confusion-defense" class="xref">Section 3.3.2</a>).<a href="#section-3.2-8" class="pilcrow">¶</a></p>
+<p id="section-3.2-8">By default, Pseudorandom cTLS assumes that the TLS ciphertext is using an AEAD algorithm whose output is purely pseudorandom, such as AES-GCM and ChaCha20-Poly1305.  If the ciphertext might not be pseudorandom (e.g. when handling hostile plaintext), the ciphertext can be "reciphered" to ensure pseudorandomness (see <a href="#confusion-defense" class="xref">Section 3.3</a>).<a href="#section-3.2-8" class="pilcrow">¶</a></p>
 <div id="with-streaming-transports">
 <section id="section-3.2.1">
           <h4 id="name-with-streaming-transports">
@@ -1414,35 +1414,17 @@ TSPRP-Decipher(key, tweak, ciphertext) -&gt; message
 </div>
 </section>
 </div>
-<div id="optional-keys">
-<section id="section-3.3">
-        <h3 id="name-optional-keys">
-<a href="#section-3.3" class="section-number selfRef">3.3. </a><a href="#name-optional-keys" class="section-name selfRef">Optional Keys</a>
-        </h3>
-<div id="start-tag">
-<section id="section-3.3.1">
-          <h4 id="name-start-tag">
-<a href="#section-3.3.1" class="section-number selfRef">3.3.1. </a><a href="#name-start-tag" class="section-name selfRef">"start-tag"</a>
-          </h4>
-<p id="section-3.3.1-1">In some deployments, it may be necessary or valuable to authenticate that a ClientHello was issued with a particular Pseudorandom cTLS configuration.  Merely deciphering the ClientHello, and observing that it parses correctly, does not conclusively prove that it was issued as expected.  It is possible, though not likely, that a random byte sequence could be parsed as a valid cTLS ClientHello.<a href="#section-3.3.1-1" class="pilcrow">¶</a></p>
-<p id="section-3.3.1-2">To require proof that the sender was using a particular Pseudorandom cTLS template, the template MAY include the optional key "start-tag" whose value is an integer <code>T</code> between 1 and 32 (inclusive).  When this key is present, the client MUST prepend <code>T</code> zero bytes to the ClientHello before calling <code>TSPRP-Encipher()</code> on the ClientHello payload, and the server SHOULD verify that these bytes are zero after calling <code>TSPRP-Decipher()</code>.  This arrangement authenticates the TSPRP <span>[<a href="#Encode-Then-Encipher" class="xref">Encode-Then-Encipher</a>]</span>.  The indicated length in the <code>Handshake</code> header is not altered, so this does not reduce the maximum handshake message size.<a href="#section-3.3.1-2" class="pilcrow">¶</a></p>
-<p id="section-3.3.1-3">Start tags can be used to enable rotation of the Pseudorandom cTLS key.  With a tag in place, servers can use trial decryption to identify which key (old or new) is in use for each new connection.  To avoid false matches, values of <code>T</code> less than 8 are NOT RECOMMENDED.<a href="#section-3.3.1-3" class="pilcrow">¶</a></p>
-<p id="section-3.3.1-4">When "start-tag" is in use, the "pseudorandom" key MAY appear in the template's "optional" section.<a href="#section-3.3.1-4" class="pilcrow">¶</a></p>
-</section>
-</div>
 <div id="confusion-defense">
-<section id="section-3.3.2">
-          <h4 id="name-client-recipher-and-server-">
-<a href="#section-3.3.2" class="section-number selfRef">3.3.2. </a><a href="#name-client-recipher-and-server-" class="section-name selfRef">"client-recipher" and "server-recipher"</a>
-          </h4>
-<p id="section-3.3.2-1">The procedure described in <a href="#use" class="xref">Section 3.2</a> is sufficient to render the bitstream pseudorandom to a third party when both peers are operating correctly.  However, if a malicious client or server can coerce its peer into sending particular plaintext (as is common in web browsers), it can choose plaintext with knowledge of the encryption keys, in order to produce ciphertext that has visible structure to a third party.  This technique can be used to mount protocol confusion attacks <span>[<a href="#SLIPSTREAM" class="xref">SLIPSTREAM</a>]</span>.<a href="#section-3.3.2-1" class="pilcrow">¶</a></p>
-<p id="section-3.3.2-2">This attack is particularly straightforward when using the AES-GCM or ChaCha20-Poly1305 cipher suites, as much of the ciphertext is encrypted by XOR with a stream cipher.  A malicious peer in this threat model can choose desired ciphertext, XOR it with the keystream to produce the malicious plaintext, and rely on the other peer's encryption stage to reverse the encryption and reveal the desired ciphertext.<a href="#section-3.3.2-2" class="pilcrow">¶</a></p>
-<p id="section-3.3.2-3">As a defense against this attack, the Pseudorandom cTLS extension supports two optional keys named "client-recipher" and "server-recipher".  Each key's value is an integer <code>E</code> between 0 and 16 (inclusive) indicating how much entropy to add.  When the "client-recipher" key is present, the client MUST prepend <code>E</code> fresh random bytes to <code>CTLSCiphertext.encrypted_record</code> before encipherment.  The server MUST apply a similar transformation if the "server-recipher" key is present.<a href="#section-3.3.2-3" class="pilcrow">¶</a></p>
-<p id="section-3.3.2-4">This transformation does not alter the <code>Length</code> field in the Unified Header, so it does not reduce the maximum plaintext record size.  However, it does increase the output message size, which may impact MTU calculations in DTLS.<a href="#section-3.3.2-4" class="pilcrow">¶</a></p>
-<p id="section-3.3.2-5">The sender MUST compute <code>R</code> using a cryptographically secure pseudo-random number generator (CSPRNG) whose seed contains at least 16 bytes of entropy that is not known to the peer.<a href="#section-3.3.2-5" class="pilcrow">¶</a></p>
-<p id="section-3.3.2-6">In general, a malicious peer can still produce desired ciphertext with probability <code>2^-8E</code> for each attempt by guessing a value of <code>R</code>.  Accordingly, values of <code>E</code> less than 8 are NOT RECOMMENDED for defense against confusion attacks.<a href="#section-3.3.2-6" class="pilcrow">¶</a></p>
-</section>
-</div>
+<section id="section-3.3">
+        <h3 id="name-protocol-confusion-defense">
+<a href="#section-3.3" class="section-number selfRef">3.3. </a><a href="#name-protocol-confusion-defense" class="section-name selfRef">Protocol confusion defense</a>
+        </h3>
+<p id="section-3.3-1">The procedure described in <a href="#use" class="xref">Section 3.2</a> is sufficient to render the bitstream pseudorandom to a third party when both peers are operating correctly.  However, if a malicious client or server can coerce its peer into sending particular plaintext (as is common in web browsers), it can choose plaintext with knowledge of the encryption keys, in order to produce ciphertext that has visible structure to a third party.  This technique can be used to mount protocol confusion attacks <span>[<a href="#SLIPSTREAM" class="xref">SLIPSTREAM</a>]</span>.<a href="#section-3.3-1" class="pilcrow">¶</a></p>
+<p id="section-3.3-2">This attack is particularly straightforward when using the AES-GCM or ChaCha20-Poly1305 cipher suites, as much of the ciphertext is encrypted by XOR with a stream cipher.  A malicious peer in this threat model can choose desired ciphertext, XOR it with the keystream to produce the malicious plaintext, and rely on the other peer's encryption stage to reverse the encryption and reveal the desired ciphertext.<a href="#section-3.3-2" class="pilcrow">¶</a></p>
+<p id="section-3.3-3">As a defense against this attack, the Pseudorandom cTLS extension supports two optional keys named "client-recipher" and "server-recipher".  Each key's value is an integer <code>E</code> between 0 and 16 (inclusive) indicating how much entropy to add.  When the "client-recipher" key is present, the client MUST prepend <code>E</code> fresh random bytes to <code>CTLSCiphertext.encrypted_record</code> before encipherment.  The server MUST apply a similar transformation if the "server-recipher" key is present.<a href="#section-3.3-3" class="pilcrow">¶</a></p>
+<p id="section-3.3-4">This transformation does not alter the <code>Length</code> field in the Unified Header, so it does not reduce the maximum plaintext record size.  However, it does increase the output message size, which may impact MTU calculations in DTLS.<a href="#section-3.3-4" class="pilcrow">¶</a></p>
+<p id="section-3.3-5">The sender MUST compute <code>R</code> using a cryptographically secure pseudo-random number generator (CSPRNG) whose seed contains at least 16 bytes of entropy that is not known to the peer.<a href="#section-3.3-5" class="pilcrow">¶</a></p>
+<p id="section-3.3-6">In general, a malicious peer can still produce desired ciphertext with probability <code>2^-8E</code> for each attempt by guessing a value of <code>R</code>.  Accordingly, values of <code>E</code> less than 8 are NOT RECOMMENDED for defense against confusion attacks.<a href="#section-3.3-6" class="pilcrow">¶</a></p>
 </section>
 </div>
 </section>
@@ -1453,11 +1435,10 @@ TSPRP-Decipher(key, tweak, ciphertext) -&gt; message
 <a href="#section-4" class="section-number selfRef">4. </a><a href="#name-plaintext-alerts" class="section-name selfRef">Plaintext Alerts</a>
       </h2>
 <p id="section-4-1">Representing plaintext alerts (i.e. CTLSPlaintext messages with <code>content_type = alert(21)</code>) requires additional steps, because Alert fragments have little entropy.<a href="#section-4-1" class="pilcrow">¶</a></p>
-<p id="section-4-2">A standard TLS Alert fragment is always 2 bytes long.  In Pseudorandom cTLS, senders MUST prepend at least 16 random bytes to any plaintext Alert fragment.  Enciphering and deciphering then proceed identically to other CTLSPlaintext messages.  The recipient MUST remove these bytes before passing the CTLSPlaintext to the cTLS implementation.<a href="#section-4-2" class="pilcrow">¶</a></p>
-<p id="section-4-3">Servers SHOULD expand any Alert message following the ClientHello to the same size as their usual ServerHello, and SHOULD send additional random TCP segments or datagrams to match the sizes of subsequent components of their ordinary success response.  Otherwise, an adversary could use probing to learn the allowed lengths of ClientHellos and the fraction of ciphertexts that decipher to valid ClientHellos.<a href="#section-4-3" class="pilcrow">¶</a></p>
+<p id="section-4-2">A standard TLS Alert fragment is always 2 bytes long.  In Pseudorandom cTLS, senders MUST append at least 16 random bytes to any plaintext Alert fragment and increase <code>CTLSPlaintext.length</code> accordingly.  Enciphering and deciphering then proceed identically to other CTLSPlaintext messages.  The recipient MUST remove these bytes before passing the CTLSPlaintext to the cTLS implementation.<a href="#section-4-2" class="pilcrow">¶</a></p>
 <ul class="normal ulEmpty">
-<li class="normal ulEmpty" id="section-4-4.1">
-          <p id="section-4-4.1.1">QUESTION: Are there client-issued Alerts in response to malformed ServerHello?<a href="#section-4-4.1.1" class="pilcrow">¶</a></p>
+<li class="normal ulEmpty" id="section-4-3.1">
+          <p id="section-4-3.1.1">QUESTION: Are there client-issued Alerts in response to malformed ServerHello?<a href="#section-4-3.1.1" class="pilcrow">¶</a></p>
 </li>
       </ul>
 </section>
@@ -1467,9 +1448,26 @@ TSPRP-Decipher(key, tweak, ciphertext) -&gt; message
       <h2 id="name-operational-considerations">
 <a href="#section-5" class="section-number selfRef">5. </a><a href="#name-operational-considerations" class="section-name selfRef">Operational Considerations</a>
       </h2>
-<p id="section-5-1">Pseudorandom cTLS can interfere with the use of multiple profiles on a single server.  To use Pseudorandom cTLS with multiple profiles, servers must use the same TSPRP key and the same lengths of <code>connection_id</code>.<a href="#section-5-1" class="pilcrow">¶</a></p>
-<p id="section-5-2">Pseudorandom cTLS adds a constant, symmetric computational cost to sending and receiving every record, roughly similar to the cost of encrypting a very small record.  The cryptographic cost of delivering small records will therefore be increased by a constant factor, and the computational cost of delivering large records will be almost unchanged.<a href="#section-5-2" class="pilcrow">¶</a></p>
-<p id="section-5-3">The optional defense against ciphertext confusion attacks further increases the overall computational cost, generally at least doubling the cost of delivering large records.  It also adds up to 16 bytes of overhead to each encrypted record.<a href="#section-5-3" class="pilcrow">¶</a></p>
+<div id="multiple-profiles-and-key-rotation">
+<section id="section-5.1">
+        <h3 id="name-multiple-profiles-and-key-r">
+<a href="#section-5.1" class="section-number selfRef">5.1. </a><a href="#name-multiple-profiles-and-key-r" class="section-name selfRef">Multiple profiles and key rotation</a>
+        </h3>
+<p id="section-5.1-1">Pseudorandom cTLS supports multiple profiles on the same server port.  If all profiles share the same Pseudorandom cTLS configuration (and the same length of <code>connection_id</code> if applicable), the server simply deciphers the incoming data before reading the <code>profile_id</code> or <code>connection_id</code>.<a href="#section-5.1-1" class="pilcrow">¶</a></p>
+<p id="section-5.1-2">If multiple Pseudorandom cTLS configurations are in use, the server can use trial deciphering to determine which profile applies to each new connection.  A trial is confirmed as correct if the deciphered <code>ClientHello.profile_id</code> matches an expected value.  To avoid false matches, server operators SHOULD choose a <code>profile_id</code> whose length is at least 8 bytes.<a href="#section-5.1-2" class="pilcrow">¶</a></p>
+<p id="section-5.1-3">Pseudorandom cTLS key rotation can be represented as a transition from one profile to another.  If the only difference between two profiles is the Pseudorandom cTLS configuration, the server MAY use the same <code>profile_id</code> for both profiles, relying on trial deciphering to identify which version is in use.  Trial deciphering is also sufficient to determine whether the client is using Pseudorandom cTLS, so the "pseudorandom" key MAY appear in the template's "optional" section.<a href="#section-5.1-3" class="pilcrow">¶</a></p>
+<p id="section-5.1-4">Pseudorandom cTLS does not support demultiplexing distinct configurations by <code>connection_id</code>.  Such use would require both the client and server to perform trial deciphering on every datagram.  Instead, clients that implement Pseudorandom cTLS MUST use a distinct transport session (e.g. UDP 5-tuple) for each cTLS profile.<a href="#section-5.1-4" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="computational-cost">
+<section id="section-5.2">
+        <h3 id="name-computational-cost">
+<a href="#section-5.2" class="section-number selfRef">5.2. </a><a href="#name-computational-cost" class="section-name selfRef">Computational cost</a>
+        </h3>
+<p id="section-5.2-1">Pseudorandom cTLS adds a constant, symmetric computational cost to sending and receiving every record, roughly similar to the cost of encrypting a very small record.  The cryptographic cost of delivering small records will therefore be increased by a constant factor, and the computational cost of delivering large records will be almost unchanged.<a href="#section-5.2-1" class="pilcrow">¶</a></p>
+<p id="section-5.2-2">The optional defense against ciphertext confusion attacks further increases the overall computational cost, generally at least doubling the cost of delivering large records.  It also adds up to 16 bytes of overhead to each encrypted record.<a href="#section-5.2-2" class="pilcrow">¶</a></p>
+</section>
+</div>
 </section>
 </div>
 <div id="security-considerations">
@@ -1479,7 +1477,7 @@ TSPRP-Decipher(key, tweak, ciphertext) -&gt; message
       </h2>
 <p id="section-6-1">Pseudorandom cTLS operates as a layer between cTLS and its transport, so the security properties of cTLS are largely preserved.  However, there are some small differences.<a href="#section-6-1" class="pilcrow">¶</a></p>
 <p id="section-6-2">In datagram mode, the <code>profile_id</code> and <code>connection_id</code> fields allow a server to reject almost all packets from a sender who does not know the template (e.g. a DDoS attacker), with minimal CPU cost.  Pseudorandom cTLS requires the server to apply a decryption operation to every incoming datagram before establishing whether it might be valid.  This operation is O(1) and uses only symmetric cryptography, so the impact is expected to be bearable in most deployments.<a href="#section-6-2" class="pilcrow">¶</a></p>
-<p id="section-6-3">cTLS templates are presumed to be published by the server operator.  In order to defend against ciphertext confusion attacks (<a href="#confusion-defense" class="xref">Section 3.3.2</a>), the client MUST refuse to connect unless the server provides a cTLS template with a sufficiently large "client-recipher" value.<a href="#section-6-3" class="pilcrow">¶</a></p>
+<p id="section-6-3">cTLS templates are presumed to be published by the server operator.  In order to defend against ciphertext confusion attacks (<a href="#confusion-defense" class="xref">Section 3.3</a>), the client MUST refuse to connect unless the server provides a cTLS template with a sufficiently large "client-recipher" value.<a href="#section-6-3" class="pilcrow">¶</a></p>
 <ul class="normal ulEmpty">
 <li class="normal ulEmpty" id="section-6-4.1">
           <p id="section-6-4.1.1">TODO: More precise security properties and security proof.  The goal we're after hasn't been widely considered in the literature so far, at least as far as we can tell.  The basic idea is that the "real" protocol (Pseudorandom cTLS) should be indistinguishable from some "target" protocol that the network is known tolerate.  The assumption is that middleboxes would not attempt to parse packets whose contents are pseudorandom.  (The same idea underlies QUIC's wire encoding format <span>[<a href="#RFC9000" class="xref">RFC9000</a>]</span>.)   A starting point might be the formal notion of "Observational Equivalence" (https://infsec.ethz.ch/content/dam/ethz/special-interest/infk/inst-infsec/information-security-group-dam/research/publications/pub2015/ASPObsEq.pdf).<a href="#section-6-4.1.1" class="pilcrow">¶</a></p>
@@ -1492,7 +1490,9 @@ TSPRP-Decipher(key, tweak, ciphertext) -&gt; message
       <h2 id="name-privacy-considerations">
 <a href="#section-7" class="section-number selfRef">7. </a><a href="#name-privacy-considerations" class="section-name selfRef">Privacy Considerations</a>
       </h2>
-<p id="section-7-1">Pseudorandom cTLS is intended to improve privacy in scenarios where the adversary lacks access to the cTLS template.  However, if the adversary does have access to the cTLS template, and the template does not have a distinctive <code>profile_id</code>, Pseudorandom cTLS can reduce privacy, by enabling strong confirmation that a connection is indeed using that template.<a href="#section-7-1" class="pilcrow">¶</a></p>
+<p id="section-7-1">Pseudorandom cTLS is intended to improve privacy in scenarios where the adversary can observe traffic to various servers but lacks access to their cTLS templates, by preventing the adversary from determining which profiles are in use by which clients and servers.  If instead the adversary does have access to some cTLS templates, and these templates do not have distinctive <code>profile_id</code> values, Pseudorandom cTLS can reduce privacy, by enabling strong confirmation that a connection is using a specific profile.<a href="#section-7-1" class="pilcrow">¶</a></p>
+<p id="section-7-2">When Pseudorandom cTLS is enabled, the adversary can still observe the length and timing of messages, so templates that differ in these can still be distinguished.  Implementations MAY use TLS padding to reduce the observable patterns.<a href="#section-7-2" class="pilcrow">¶</a></p>
+<p id="section-7-3">The adversary could also send random data to the server (a "probing attack") in order to learn the fraction of messages of each length that produce valid ClientHellos.  This "probability fingerprint" could allow discrimination between profiles.  Server operators that wish to defend against probing attacks SHOULD choose a sufficiently long <code>profile_id</code> that invalid ClientHellos are always rejected without eliciting a response.  A 15-byte <code>profile_id</code> provides 128-bit security.<a href="#section-7-3" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="iana-considerations">
@@ -1601,10 +1601,6 @@ registry.  The row to be added in the registry has the following form:<a href="#
 <a href="#section-9.2" class="section-number selfRef">9.2. </a><a href="#name-informative-references" class="section-name selfRef">Informative References</a>
         </h3>
 <dl class="references">
-<dt id="Encode-Then-Encipher">[Encode-Then-Encipher]</dt>
-        <dd>
-<span class="refAuthor">Bellare, M.</span> and <span class="refAuthor">P. Rogaway</span>, <span class="refTitle">"Encode-Then-Encipher Encryption: How to Exploit Nonces or Redundancy in Plaintexts for Efficient Cryptography"</span>, <span class="seriesInfo">Advances in Cryptology - ASIACRYPT 2000 pp. 317-330</span>, <span class="seriesInfo">DOI 10.1007/3-540-44448-3_24</span>, <time datetime="2000" class="refDate">2000</time>, <span>&lt;<a href="https://doi.org/10.1007/3-540-44448-3_24">https://doi.org/10.1007/3-540-44448-3_24</a>&gt;</span>. </dd>
-<dd class="break"></dd>
 <dt id="HCTR2">[HCTR2]</dt>
         <dd>
 <span class="refTitle">"Length-preserving encryption with HCTR2"</span>, <span>n.d.</span>, <span>&lt;<a href="https://eprint.iacr.org/2021/1441/20211027:085150">https://eprint.iacr.org/2021/1441/20211027:085150</a>&gt;</span>. </dd>
