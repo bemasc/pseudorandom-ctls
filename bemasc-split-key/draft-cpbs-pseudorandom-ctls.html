@@ -1330,14 +1330,14 @@ TSPRP-Decipher(key, tweak, ciphertext) -&gt; message
           <h4 id="name-key-derivation">
 <a href="#section-3.2.1" class="section-number selfRef">3.2.1. </a><a href="#name-key-derivation" class="section-name selfRef">Key Derivation</a>
           </h4>
-<p id="section-3.2.1-1">To provide clear separation between client and server streams, the client and server send data under separate keys, derived from the profile key as follows:<a href="#section-3.2.1-1" class="pilcrow">¶</a></p>
+<p id="section-3.2.1-1">To provide clear separation between data sent by the client and the server, the client and server encipher data using different keys, derived from the profile key as follows:<a href="#section-3.2.1-1" class="pilcrow">¶</a></p>
 <div class="alignLeft art-text artwork" id="section-3.2.1-2">
 <pre>
 client_key = TSPRP-Encipher(key, "derive", zeros)
 server_key = TSPRP-Encipher(key, "derive", ones)
 </pre><a href="#section-3.2.1-2" class="pilcrow">¶</a>
 </div>
-<p id="section-3.2.1-3">where <code>zeros</code> and <code>ones</code> are messages the same size as <code>key</code>, with all bits set to zero and one respectively.<a href="#section-3.2.1-3" class="pilcrow">¶</a></p>
+<p id="section-3.2.1-3">where <code>zeros</code> and <code>ones</code> are messages the same size as <code>key</code>, with all bits set to zero and one respectively.  This procedure guarantees that <code>client_key</code> and <code>server_key</code> are distinct and would appear unrelated to any party who does not know the profile key.<a href="#section-3.2.1-3" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="with-streaming-transports">

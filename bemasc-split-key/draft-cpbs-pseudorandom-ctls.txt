@@ -221,15 +221,17 @@ Table of Contents
 
 3.2.1.  Key Derivation
 
-   To provide clear separation between client and server streams, the
-   client and server send data under separate keys, derived from the
-   profile key as follows:
+   To provide clear separation between data sent by the client and the
+   server, the client and server encipher data using different keys,
+   derived from the profile key as follows:
 
    client_key = TSPRP-Encipher(key, "derive", zeros)
    server_key = TSPRP-Encipher(key, "derive", ones)
 
    where zeros and ones are messages the same size as key, with all bits
-   set to zero and one respectively.
+   set to zero and one respectively.  This procedure guarantees that
+   client_key and server_key are distinct and would appear unrelated to
+   any party who does not know the profile key.
 
 3.2.2.  With Streaming Transports
 
