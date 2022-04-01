@@ -84,12 +84,10 @@ A cTLS template is structured as a JSON object.  This extension is represented b
 
 ~~~json
 "pseudorandom": {
-  "tsprp": "hctr2",
+  "tsprp": "exp-hctr2",
   "key": "nx2kEm50FCE...TyOhGOw477EHS"
 },
 ~~~
-
-> TODO: Consider having two keys, one for sending data from client to server and another for sending data from server to client, to align better with the TLS key schedule.  These could be specified explicitly or generated from a single secret by a KDF.
 
 ## Use
 
@@ -112,14 +110,25 @@ Pseudorandom cTLS also enciphers every record header.  In addition to the header
 
 By default, Pseudorandom cTLS assumes that the TLS ciphertext is using an AEAD algorithm whose output is purely pseudorandom, such as AES-GCM and ChaCha20-Poly1305.  If the ciphertext might not be pseudorandom (e.g. when handling hostile plaintext), the ciphertext can be "reciphered" to ensure pseudorandomness (see {{confusion-defense}}).
 
+### Key Derivation
+
+To provide clear separation between data sent by the client and the server, the client and server encipher data using different keys, derived from the profile key as follows:
+
+~~~
+client_key = TSPRP-Encipher(key, "derive", zeros)
+server_key = TSPRP-Encipher(key, "derive", ones)
+~~~
+
+where `zeros` and `ones` are messages the same size as `key`, with all bits set to zero and one respectively.  This procedure guarantees that `client_key` and `server_key` are distinct and would appear unrelated to any party who does not know the profile key.
+
 ### With Streaming Transports
 
 When used over a streaming transport, Pseudorandom cTLS requires that headers have predictable lengths.  Therefore, if a Connection ID is negotiated, it MUST always be included.  Normally, when TLS runs on top of a streaming transport, Connection IDs are not enabled, so this is not expected to be a significant limitation.
 
-The transformation performed by the sender uses `TSPRP-Encipher()` and `key` from `template.pseudorandom`.  The sender first constructs any CTLSPlaintext records as follows:
+The transformation performed by the sender uses `TSPRP-Encipher()` and `client_key` or `server_key`.  The sender first constructs any CTLSPlaintext records as follows:
 
-1. Set `tweak = "client hs"` if sent by the client, or `"server hs"` if sent by the server.
-2. Replace the message with `TSPRP-Encipher(key, tweak, message)`.
+1. Set `tweak = "hs"`.
+2. Replace the message with `TSPRP-Encipher(client/server_key, tweak, message)`.
 3. Fragment the message if necessary, ensuring each fragment is at least 16 bytes long.
 4. Change the `content_type` of the final fragment to `ctls_handshake_end(TBD)` (see {{content-type}}).
 
@@ -128,9 +137,9 @@ Note: This procedure requires that handshake messages are at least 16 bytes long
 The sender then constructs cTLS records as usual, but applies the following transformation before sending each record:
 
 1. Let `prefix` be the first 19 bytes of the record.
-2. Set `tweak = "client"` if sent by the client, or `"server"` if sent by the server.
-3. If the record is CTLSCiphertext, append the 64-bit Sequence Number to `tweak`.
-4. Replace `prefix` with `TSPRP-Encipher(key, tweak, prefix)`.
+2. If the record is CTLSPlaintext, set `tweak = ""`.
+3. If the record is CTLSCiphertext, let `tweak` be the 64-bit Sequence Number in network byte order.
+4. Replace `prefix` with `TSPRP-Encipher(client/server_key, tweak, prefix)`.
 
 > OPEN ISSUE: How should we actually form the tweaks?  Should we add some kind of chaining, within a stream or binding ServerHello to ClientHello?
 
@@ -141,7 +150,7 @@ Pseudorandom cTLS applies to datagram applications of cTLS without restriction. 
 Given the inputs:
 
 * `payload`, an entire datagram that may contain multiple cTLS records.
-* `TSPRP-Decipher()` and `key` from `template.pseudorandom`
+* `TSPRP-Decipher()` and `client_key` or `server_key`
 * `connection_id`, the ID expected on incoming CTLSCiphertext records
 
 The recipient deciphers the datagram as follows:
@@ -150,15 +159,15 @@ The recipient deciphers the datagram as follows:
 2. Let `index = 0`.
 3. While `index != len(payload)`:
     1. Let `prefix = payload[index : min(len(payload), index + max_hdr_length + 16)]`
-    2. Let `tweak = "client datagram" + len(payload) + index` if sent by the client, or `"server datagram" + len(payload) + index` if sent by the server.
-    3. Replace `prefix` with `TSPRP-Decipher(key, tweak, prefix)`.
+    2. Let `tweak = "datagram" + len(payload) + index`.
+    3. Replace `prefix` with `TSPRP-Decipher(client/server_key, tweak, prefix)`.
     4. Set `index` to the end of this record.
 
 CTLSPlaintext records are subject to an additional decipherment step:
 
 1. Perform fragment reassembly to recover the complete `Handshake.body` ({{Section 5.5 of !DTLS13}}).
-2. Let `tweak` be `"client datagram hs" + Handshake.msg_type` if sent by the client, or `"server datagram hs" + Handshake.msg_type` if sent by the server.
-3. Replace `Handshake.body` with `TSPRP-Decipher(key, tweak, Handshake.body)`.
+2. Let `tweak` be `"datagram hs" + Handshake.msg_type`.
+3. Replace `Handshake.body` with `TSPRP-Decipher(client/server_key, tweak, Handshake.body)`.
 
 ## Protocol confusion defense {#confusion-defense}
 
@@ -222,7 +231,7 @@ The adversary could also send random data to the server (a "probing attack") in 
 
 ## TSPRP Registry
 
-We assume the existence of an IANA registry of Tweakable Strong Pseudorandom Permutations (TSPRPs).  However, no such registry exists at present.  This draft is blocked until someone documents and registers a suitable TSPRP algorithm.
+We assume the existence of an IANA registry of Tweakable Strong Pseudorandom Permutations (TSPRPs).  However, no such registry exists at present.  For experimental purposes, the value "exp-hctr2" is reserved to indicate HCTR2 {{HCTR2}}.
 
 ## cTLS Template Key registry
 
@@ -242,8 +251,6 @@ registry.  The row to be added in the registry has the following form:
 | Value | Description        | DTLS-OK | Reference |
 |:=====:|:===================|:========|:==========|
 |  TBD  | ctls_handshake_end | Y       | RFCXXXX   |
-
-A suitable TSPRP algorithm for this registry might be HCTR2 {{HCTR2}}.
 
 --- back
 
