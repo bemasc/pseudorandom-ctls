@@ -492,8 +492,8 @@ Table of Contents
 
    We assume the existence of an IANA registry of Tweakable Strong
    Pseudorandom Permutations (TSPRPs).  However, no such registry exists
-   at present.  For experimental purposes, the "tsprp" value "exp-hctr2"
-   is reserved to indicate HCTR2 [HCTR2].
+   at present.  For experimental purposes, the value "exp-hctr2" is
+   reserved to indicate HCTR2 [HCTR2].
 
 8.2.  cTLS Template Key registry
 
