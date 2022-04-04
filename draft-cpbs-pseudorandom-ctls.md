@@ -231,7 +231,7 @@ The adversary could also send random data to the server (a "probing attack") in 
 
 ## TSPRP Registry
 
-We assume the existence of an IANA registry of Tweakable Strong Pseudorandom Permutations (TSPRPs).  However, no such registry exists at present.  For experimental purposes, the value "exp-hctr2" is reserved to indicate HCTR2 {{HCTR2}}.
+This specification anticipates the existence of an IANA registry of Tweakable Strong Pseudorandom Permutations (TSPRPs).  Until such a registry exists, the value "exp-hctr2" is reserved to indicate the HCTR2 TSPRP {{HCTR2}}.
 
 ## cTLS Template Key registry
 
