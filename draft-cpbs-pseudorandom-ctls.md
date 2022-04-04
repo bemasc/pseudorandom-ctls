@@ -76,6 +76,15 @@ The goal of this extension is to enable two endpoints to agree on a TLS-based pr
 * Efficient support for demultiplexing arbitrary cTLS templates.
 * Addressing information leakage in the length and timing of transmissions.
 
+### Experimental status
+
+This specification has experimental status (INTENDED).  The goals of this experiment include:
+
+* To assess the internet's tolerance of unrecognized protocols.
+* To gain experience with TSPRPs in a protocol context.
+* To exercise cTLS's extensibility features.
+* To support practical and theoretical research into protocol distinguishability.
+
 # The Pseudorandom Extension
 
 ## Form
