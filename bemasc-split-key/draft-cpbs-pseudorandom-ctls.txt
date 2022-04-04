@@ -5,8 +5,8 @@
 TLS WG                                                       B. Schwartz
 Internet-Draft                                                Google LLC
 Intended status: Experimental                                  C. Patton
-Expires: 3 October 2022                                 Cloudflare, Inc.
-                                                            1 April 2022
+Expires: 6 October 2022                                 Cloudflare, Inc.
+                                                            4 April 2022
 
 
                   The Pseudorandom Extension for cTLS
@@ -39,7 +39,7 @@ Status of This Memo
    time.  It is inappropriate to use Internet-Drafts as reference
    material or to cite them other than as "work in progress."
 
-   This Internet-Draft will expire on 3 October 2022.
+   This Internet-Draft will expire on 6 October 2022.
 
 Copyright Notice
 
@@ -490,10 +490,10 @@ Table of Contents
 
 8.1.  TSPRP Registry
 
-   We assume the existence of an IANA registry of Tweakable Strong
-   Pseudorandom Permutations (TSPRPs).  However, no such registry exists
-   at present.  For experimental purposes, the value "exp-hctr2" is
-   reserved to indicate HCTR2 [HCTR2].
+   This specification anticipates the existence of an IANA registry of
+   Tweakable Strong Pseudorandom Permutations (TSPRPs).  Until such a
+   registry exists, the value "exp-hctr2" is reserved to indicate the
+   HCTR2 TSPRP [HCTR2].
 
 8.2.  cTLS Template Key registry
 
