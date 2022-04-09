@@ -5,8 +5,8 @@
 TLS WG                                                       B. Schwartz
 Internet-Draft                                                Google LLC
 Intended status: Experimental                                  C. Patton
-Expires: 3 October 2022                                 Cloudflare, Inc.
-                                                            1 April 2022
+Expires: 11 October 2022                                Cloudflare, Inc.
+                                                            9 April 2022
 
 
                   The Pseudorandom Extension for cTLS
@@ -39,7 +39,7 @@ Status of This Memo
    time.  It is inappropriate to use Internet-Drafts as reference
    material or to cite them other than as "work in progress."
 
-   This Internet-Draft will expire on 3 October 2022.
+   This Internet-Draft will expire on 11 October 2022.
 
 Copyright Notice
 
@@ -63,6 +63,7 @@ Table of Contents
      2.2.  Goal
        2.2.1.  Requirements
        2.2.2.  Non-requirements
+       2.2.3.  Experimental status
    3.  The Pseudorandom Extension
      3.1.  Form
      3.2.  Use
@@ -156,6 +157,20 @@ Table of Contents
 
    *  Addressing information leakage in the length and timing of
       transmissions.
+
+2.2.3.  Experimental status
+
+   This specification has experimental status (INTENDED).  The goals of
+   this experiment include:
+
+   *  To assess the internet's tolerance of unrecognized protocols.
+
+   *  To gain experience with TSPRPs in a protocol context.
+
+   *  To exercise cTLS's extensibility features.
+
+   *  To support practical and theoretical research into protocol
+      distinguishability.
 
 3.  The Pseudorandom Extension
 
