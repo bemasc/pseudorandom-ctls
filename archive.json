@@ -1,6 +1,6 @@
 {
   "magic": "E!vIA5L86J2I",
-  "timestamp": "2022-04-05T01:11:57.933943+00:00",
+  "timestamp": "2022-04-10T01:17:35.827401+00:00",
   "repo": "bemasc/pseudorandom-ctls",
   "labels": [
     {
@@ -1857,11 +1857,13 @@
       "state": "OPEN",
       "author": "bemasc",
       "authorAssociation": "OWNER",
-      "assignees": [],
+      "assignees": [
+        "cjpatton"
+      ],
       "labels": [],
       "body": "This removes the need to tag every tweak with \"client\" or \"server\".\r\nThis change also talks a bit more directly about HCTR2.",
       "createdAt": "2022-04-01T21:24:18Z",
-      "updatedAt": "2022-04-04T13:52:00Z",
+      "updatedAt": "2022-04-09T15:29:49Z",
       "baseRepository": "bemasc/pseudorandom-ctls",
       "baseRefName": "main",
       "baseRefOid": "3b3dd128343dc6b05731fdedeb9dd33c378ba207",
@@ -1872,34 +1874,128 @@
       "mergedAt": null,
       "mergedBy": null,
       "mergeCommit": null,
-      "comments": [],
-      "reviews": []
+      "comments": [
+        {
+          "author": "bemasc",
+          "authorAssociation": "OWNER",
+          "body": "Using a standard KDF would be fine with me.  I mostly wrote it this way because\r\n\r\n1. It seemed fun.\r\n2. A KDF would require adding a dependency on a new primitive (a hash function, presumably) and construction, which is more work for implementers.\r\n3. Specifying the KDF is annoying.  Do we now need a \"cipher suite\" instead of a TSPRP?  Or do we \"hardcode\" a specific KDF?",
+          "createdAt": "2022-04-09T13:02:11Z",
+          "updatedAt": "2022-04-09T13:02:11Z"
+        },
+        {
+          "author": "cjpatton",
+          "authorAssociation": "COLLABORATOR",
+          "body": "> Using a standard KDF would be fine with me. I mostly wrote it this way because\r\n> \r\n>     1. It seemed fun.\r\n> \r\n>     2. A KDF would require adding a dependency on a new primitive (a hash function, presumably) and construction, which is more work for implementers.\r\n> \r\n>     3. Specifying the KDF is annoying.  Do we now need a \"cipher suite\" instead of a TSPRP?  Or do we \"hardcode\" a specific KDF?\r\n\r\nYeah, (2.) and (3.) seem like good enough reasons :)",
+          "createdAt": "2022-04-09T15:29:49Z",
+          "updatedAt": "2022-04-09T15:29:49Z"
+        }
+      ],
+      "reviews": [
+        {
+          "id": "PRR_kwDOGKXUDM432mPQ",
+          "commit": {
+            "abbreviatedOid": "99cc067"
+          },
+          "author": "cjpatton",
+          "authorAssociation": "COLLABORATOR",
+          "state": "COMMENTED",
+          "body": "One minor comment, but this looks fine to me! Quick question, however: What's the rationale for not using a standard KDF?",
+          "createdAt": "2022-04-09T01:09:43Z",
+          "updatedAt": "2022-04-09T01:11:24Z",
+          "comments": [
+            {
+              "originalPosition": 25,
+              "body": "It may wind up being more efficient to fix the plaintext input to, say, the empty string, and vary the tweak.",
+              "createdAt": "2022-04-09T01:09:43Z",
+              "updatedAt": "2022-04-09T01:11:24Z"
+            }
+          ]
+        },
+        {
+          "id": "PRR_kwDOGKXUDM43228g",
+          "commit": {
+            "abbreviatedOid": "99cc067"
+          },
+          "author": "bemasc",
+          "authorAssociation": "OWNER",
+          "state": "COMMENTED",
+          "body": "",
+          "createdAt": "2022-04-09T13:06:52Z",
+          "updatedAt": "2022-04-09T13:06:52Z",
+          "comments": [
+            {
+              "originalPosition": 25,
+              "body": "I thought of that initially, but I wrote it this way because\r\n\r\n1. This absolutely guarantees that `client_key` and `server_key` are distinct (due to invertibility).\r\n2. This seems to guarantee that there is no related-key attack between them, because any such attack would violate the SPRP definition.\r\n\r\nI've never been entirely clear on what the guarantees are about the (un)relatedness of differently-tweaked instances of the TSPRP, so that seemed harder to reason about.",
+              "createdAt": "2022-04-09T13:06:52Z",
+              "updatedAt": "2022-04-09T13:06:52Z"
+            }
+          ]
+        },
+        {
+          "id": "PRR_kwDOGKXUDM4328rL",
+          "commit": {
+            "abbreviatedOid": "99cc067"
+          },
+          "author": "cjpatton",
+          "authorAssociation": "COLLABORATOR",
+          "state": "COMMENTED",
+          "body": "",
+          "createdAt": "2022-04-09T15:28:34Z",
+          "updatedAt": "2022-04-09T15:28:34Z",
+          "comments": [
+            {
+              "originalPosition": 25,
+              "body": "For a secure TSPRP: For each key K and distinct tweaks T, T', TSPRP-Encipher(K, T, .) and TSPRP-Encipher(K, T', .) can be treated as independent, random random permutations. See Section 2 of [Lis02](https://link.springer.com/content/pdf/10.1007/3-540-45708-9_3.pdf).",
+              "createdAt": "2022-04-09T15:28:34Z",
+              "updatedAt": "2022-04-09T15:28:34Z"
+            }
+          ]
+        }
+      ]
     },
     {
       "number": 20,
       "id": "PR_kwDOGKXUDM41ls5w",
       "title": "Discuss experimental status",
       "url": "https://github.com/bemasc/pseudorandom-ctls/pull/20",
-      "state": "OPEN",
+      "state": "MERGED",
       "author": "bemasc",
       "authorAssociation": "OWNER",
-      "assignees": [],
+      "assignees": [
+        "cjpatton"
+      ],
       "labels": [],
       "body": "",
       "createdAt": "2022-04-04T14:04:18Z",
-      "updatedAt": "2022-04-04T14:04:18Z",
+      "updatedAt": "2022-04-09T12:59:01Z",
       "baseRepository": "bemasc/pseudorandom-ctls",
       "baseRefName": "main",
       "baseRefOid": "3b3dd128343dc6b05731fdedeb9dd33c378ba207",
       "headRepository": "bemasc/pseudorandom-ctls",
       "headRefName": "bemasc-exp",
       "headRefOid": "c94f005680b1525b9bd035020320ddb4f53073e2",
-      "closedAt": null,
-      "mergedAt": null,
-      "mergedBy": null,
-      "mergeCommit": null,
+      "closedAt": "2022-04-09T12:58:57Z",
+      "mergedAt": "2022-04-09T12:58:57Z",
+      "mergedBy": "bemasc",
+      "mergeCommit": {
+        "oid": "d39d3330d8a9536474923ddd24c8312b949e8b31"
+      },
       "comments": [],
-      "reviews": []
+      "reviews": [
+        {
+          "id": "PRR_kwDOGKXUDM432mL9",
+          "commit": {
+            "abbreviatedOid": "c94f005"
+          },
+          "author": "cjpatton",
+          "authorAssociation": "COLLABORATOR",
+          "state": "APPROVED",
+          "body": "",
+          "createdAt": "2022-04-09T01:07:48Z",
+          "updatedAt": "2022-04-09T01:07:48Z",
+          "comments": []
+        }
+      ]
     }
   ]
 }
