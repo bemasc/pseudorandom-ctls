@@ -5,8 +5,8 @@
 TLS WG                                                       B. Schwartz
 Internet-Draft                                                Google LLC
 Intended status: Experimental                                  C. Patton
-Expires: 11 October 2022                                Cloudflare, Inc.
-                                                            9 April 2022
+Expires: 13 October 2022                                Cloudflare, Inc.
+                                                           11 April 2022
 
 
                   The Pseudorandom Extension for cTLS
@@ -39,7 +39,7 @@ Status of This Memo
    time.  It is inappropriate to use Internet-Drafts as reference
    material or to cite them other than as "work in progress."
 
-   This Internet-Draft will expire on 11 October 2022.
+   This Internet-Draft will expire on 13 October 2022.
 
 Copyright Notice
 
@@ -67,8 +67,9 @@ Table of Contents
    3.  The Pseudorandom Extension
      3.1.  Form
      3.2.  Use
-       3.2.1.  With Streaming Transports
-       3.2.2.  With Datagram Transports
+       3.2.1.  Key Derivation
+       3.2.2.  With Streaming Transports
+       3.2.3.  With Datagram Transports
      3.3.  Protocol confusion defense
    4.  Plaintext Alerts
    5.  Operational Considerations
@@ -184,14 +185,9 @@ Table of Contents
    template might contain an entry like:
 
    "pseudorandom": {
-     "tsprp": "hctr2",
+     "tsprp": "exp-hctr2",
      "key": "nx2kEm50FCE...TyOhGOw477EHS"
    },
-
-      TODO: Consider having two keys, one for sending data from client
-      to server and another for sending data from server to client, to
-      align better with the TLS key schedule.  These could be specified
-      explicitly or generated from a single secret by a KDF.
 
 3.2.  Use
 
@@ -238,7 +234,21 @@ Table of Contents
    pseudorandom (e.g. when handling hostile plaintext), the ciphertext
    can be "reciphered" to ensure pseudorandomness (see Section 3.3).
 
-3.2.1.  With Streaming Transports
+3.2.1.  Key Derivation
+
+   To provide clear separation between data sent by the client and the
+   server, the client and server encipher data using different keys,
+   derived from the profile key as follows:
+
+   client_key = TSPRP-Encipher(key, "derive", zeros)
+   server_key = TSPRP-Encipher(key, "derive", ones)
+
+   where zeros and ones are messages the same size as key, with all bits
+   set to zero and one respectively.  This procedure guarantees that
+   client_key and server_key are distinct and would appear unrelated to
+   any party who does not know the profile key.
+
+3.2.2.  With Streaming Transports
 
    When used over a streaming transport, Pseudorandom cTLS requires that
    headers have predictable lengths.  Therefore, if a Connection ID is
@@ -247,13 +257,13 @@ Table of Contents
    is not expected to be a significant limitation.
 
    The transformation performed by the sender uses TSPRP-Encipher() and
-   key from template.pseudorandom.  The sender first constructs any
+   client_key or server_key.  The sender first constructs any
    CTLSPlaintext records as follows:
 
-   1.  Set tweak = "client hs" if sent by the client, or "server hs" if
-       sent by the server.
+   1.  Set tweak = "hs".
 
-   2.  Replace the message with TSPRP-Encipher(key, tweak, message).
+   2.  Replace the message with TSPRP-Encipher(client/server_key, tweak,
+       message).
 
    3.  Fragment the message if necessary, ensuring each fragment is at
        least 16 bytes long.
@@ -270,19 +280,19 @@ Table of Contents
 
    1.  Let prefix be the first 19 bytes of the record.
 
-   2.  Set tweak = "client" if sent by the client, or "server" if sent
-       by the server.
+   2.  If the record is CTLSPlaintext, set tweak = "".
 
-   3.  If the record is CTLSCiphertext, append the 64-bit Sequence
-       Number to tweak.
+   3.  If the record is CTLSCiphertext, let tweak be the 64-bit Sequence
+       Number in network byte order.
 
-   4.  Replace prefix with TSPRP-Encipher(key, tweak, prefix).
+   4.  Replace prefix with TSPRP-Encipher(client/server_key, tweak,
+       prefix).
 
       OPEN ISSUE: How should we actually form the tweaks?  Should we add
       some kind of chaining, within a stream or binding ServerHello to
       ClientHello?
 
-3.2.2.  With Datagram Transports
+3.2.3.  With Datagram Transports
 
    Pseudorandom cTLS applies to datagram applications of cTLS without
    restriction.  If there are multiple records in the datagram,
@@ -294,7 +304,7 @@ Table of Contents
    *  payload, an entire datagram that may contain multiple cTLS
       records.
 
-   *  TSPRP-Decipher() and key from template.pseudorandom
+   *  TSPRP-Decipher() and client_key or server_key
 
    *  connection_id, the ID expected on incoming CTLSCiphertext records
 
@@ -312,11 +322,10 @@ Table of Contents
        1.  Let prefix = payload[index : min(len(payload), index +
            max_hdr_length + 16)]
 
-       2.  Let tweak = "client datagram" + len(payload) + index if sent
-           by the client, or "server datagram" + len(payload) + index if
-           sent by the server.
+       2.  Let tweak = "datagram" + len(payload) + index.
 
-       3.  Replace prefix with TSPRP-Decipher(key, tweak, prefix).
+       3.  Replace prefix with TSPRP-Decipher(client/server_key, tweak,
+           prefix).
 
        4.  Set index to the end of this record.
 
@@ -325,12 +334,10 @@ Table of Contents
    1.  Perform fragment reassembly to recover the complete
        Handshake.body (Section 5.5 of [DTLS13]).
 
-   2.  Let tweak be "client datagram hs" + Handshake.msg_type if sent by
-       the client, or "server datagram hs" + Handshake.msg_type if sent
-       by the server.
+   2.  Let tweak be "datagram hs" + Handshake.msg_type.
 
-   3.  Replace Handshake.body with TSPRP-Decipher(key, tweak,
-       Handshake.body).
+   3.  Replace Handshake.body with TSPRP-Decipher(client/server_key,
+       tweak, Handshake.body).
 
 3.3.  Protocol confusion defense
 
@@ -498,10 +505,10 @@ Table of Contents
 
 8.1.  TSPRP Registry
 
-   We assume the existence of an IANA registry of Tweakable Strong
-   Pseudorandom Permutations (TSPRPs).  However, no such registry exists
-   at present.  This draft is blocked until someone documents and
-   registers a suitable TSPRP algorithm.
+   This specification anticipates the existence of an IANA registry of
+   Tweakable Strong Pseudorandom Permutations (TSPRPs).  Until such a
+   registry exists, the value "exp-hctr2" is reserved to indicate the
+   HCTR2 TSPRP [HCTR2].
 
 8.2.  cTLS Template Key registry
 
@@ -532,8 +539,6 @@ Table of Contents
            +-------+--------------------+---------+-----------+
 
                                  Table 2
-
-   A suitable TSPRP algorithm for this registry might be HCTR2 [HCTR2].
 
 9.  References
 
